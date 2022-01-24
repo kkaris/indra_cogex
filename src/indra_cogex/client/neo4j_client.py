@@ -3,14 +3,17 @@
 import inspect
 import logging
 from functools import lru_cache, wraps
+from contextlib import asynccontextmanager
 from typing import Any, Iterable, List, Mapping, Optional, Set, Tuple, Union
 
 import neo4j.graph
+
 from indra.config import get_config
 from indra.databases import identifiers
 from indra.ontology.standardize import get_standard_agent
 from indra.statements import Agent
-from neo4j import GraphDatabase
+# AsyncGraphDatabase is only available in neo4j>=5.0.0a1
+from neo4j import GraphDatabase, AsyncGraphDatabase, basic_auth
 
 from indra_cogex.representation import Node, Relation, norm_id, triple_query
 
@@ -67,6 +70,12 @@ class Neo4jClient:
             auth=auth,
             max_connection_lifetime=3 * 60,
         )
+        self.async_driver = AsyncGraphDatabase.driver(url, auth=basic_auth(*auth))
+
+    @asynccontextmanager
+    async def get_db(self):
+        async with self.async_driver.session() as session_:
+            yield session_
 
     def create_tx(
         self,
