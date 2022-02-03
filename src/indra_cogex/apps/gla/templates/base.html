@@ -28,6 +28,11 @@
         {% endblock %}
 
         <script src="https://kit.fontawesome.com/4c86883252.js" crossorigin="anonymous"></script>
+        <!--- Vue3 - switch to specific version when used in production
+            Alternatively, download and self-host:
+            https://v3.vuejs.org/guide/installation.html#download-and-self-host -->
+        <script src="https://unpkg.com/vue@next"></script>
+
         <title>{% block title %}{% endblock %}</title>
     {% endblock %}
 </head>
@@ -61,6 +66,12 @@
 
 {% block main %}
     <div class="container" style="margin-top: 50px; margin-bottom: 50px">
+        {# Vue component: use raw to avoid jinja confusion #}
+        {% raw %}
+        <div id="vue-app">
+            <p>{{ success }}</p>
+        </div>
+        {% endraw %}
         <div class="row justify-content-center">
             <div {% block containerattr %}class="col-md-10 col-lg-10"{% endblock %}>
                 {% block container %}{% endblock %}
@@ -81,6 +92,14 @@
     <!-- Optional JavaScript -->
     {{ bootstrap.load_js() }}
     <script src="https://cdn.jsdelivr.net/gh/xcash/bootstrap-autocomplete@v2.3.7/dist/latest/bootstrap-autocomplete.min.js"></script>
+
+    <!-- Import App in main.js -->
+    <script src="{{ url_for('static', filename='vue/main.js') }}"></script>
+
+    <!-- Mount App -->
+    <script>
+      const mountedApp = app.mount('#vue-app');
+    </script>
 {% endblock %}
 </body>
 </html>
