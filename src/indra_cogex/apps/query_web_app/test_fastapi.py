@@ -36,7 +36,7 @@ def get_web_return_annotation(func: Callable) -> Type:
     if return_annotation is Iterable[Node]:
         return List[Dict[str, Any]]
     elif return_annotation is bool:
-        return {func.__name__: bool}
+        return Dict[str, bool]
     elif return_annotation is Dict[str, List[Evidence]]:
         return Dict[str, List[Dict[str, Any]]]
     elif return_annotation is Iterable[Evidence]:
@@ -124,6 +124,7 @@ for func_name in queries.__all__:
 
     # Set the documentation
     f.__doc__ = func.__doc__
+
 
 # if __name__ == '__main__':
 #     main()
