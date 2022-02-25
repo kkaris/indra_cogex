@@ -9,6 +9,7 @@ from indra.statements import Evidence, Statement, Agent
 from indra_cogex.client import queries
 from inspect import signature, isfunction
 from docstring_parser import parse
+from functools import wraps
 
 from indra_cogex.representation import Node
 
@@ -49,6 +50,35 @@ def get_web_return_annotation(func: Callable) -> Type:
         return List[Dict[str, Any]]
     else:
         raise ValueError(f"Unrecognized return annotation {return_annotation}")
+
+
+def fix_signature(*endpoint_params, endpoint_func: Callable):
+    """Fix the signature of a function to match the API docs.
+
+    The passed function will have the signature *args, **kwargs, we need to
+    update it to its correct signature
+
+    Inspired by:
+    https://stackoverflow.com/questions/1409295/set-function-signature-in-python
+    """
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            # We hace either one or two parameters
+            if len(endpoint_params) == 1:
+                return f(endpoint_params[0], *args, **kwargs)
+            elif len(endpoint_params) == 2:
+                return f(endpoint_params[0], endpoint_params[1], *args, **kwargs)
+            else:
+                raise ValueError(f"{endpoint_func.__name__} has too many parameters")
+
+        # Override signature and set the type annotations of the function arguments
+        sig = signature(f)
+        sig.return_annotation = get_web_return_annotation(endpoint_func)
+        for param in endpoint_params:
+            sig.parameters[param].annotation = str
+        f.__signature__ = sig
+        return wrapper
 
 
 # def main():
@@ -125,6 +155,7 @@ for func_name in queries.__all__:
     route_func.__doc__ = func.__doc__
 
     # Add the route
+    # https://github.com/tiangolo/fastapi/issues/3029
     app.add_api_route(
         path=f"/{func_name}",
         endpoint=route_func,
