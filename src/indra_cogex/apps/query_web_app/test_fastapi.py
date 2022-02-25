@@ -37,7 +37,7 @@ def get_web_return_annotation(func: Callable) -> Type:
         return List[Dict[str, Any]]
     elif return_annotation is bool:
         return Dict[str, bool]
-    elif return_annotation is Dict[str, List[Evidence]]:
+    elif return_annotation is Dict[int, List[Evidence]]:
         return Dict[str, List[Dict[str, Any]]]
     elif return_annotation is Iterable[Evidence]:
         return List[Dict[str, Any]]
@@ -48,7 +48,7 @@ def get_web_return_annotation(func: Callable) -> Type:
     elif return_annotation is Iterable[Agent]:
         return List[Dict[str, Any]]
     else:
-        return return_annotation
+        raise ValueError(f"Unrecognized return annotation {return_annotation}")
 
 
 # def main():
@@ -115,15 +115,22 @@ for func_name in queries.__all__:
     #    - for iterable returns: [x.to_json() for x in func_return]
     #    Try something like this:
     #    https://stackoverflow.com/a/33112180/10478812
-    @app.post(f"/{func_name}", response_model=response_model)
-    def f(*args, **kwargs):
-        # def f(params: param_model):  # FixMe: this is not working, why?
-        # params = param_model(**query.dict())
+
+    # Create the route function
+    def route_func(*args, **kwargs):
         params = param_model(*args, **kwargs)
         return {func_name: func(**params.dict())}
 
-    # Set the documentation
-    f.__doc__ = func.__doc__
+    # Copy the docstring
+    route_func.__doc__ = func.__doc__
+
+    # Add the route
+    app.add_api_route(
+        path=f"/{func_name}",
+        endpoint=route_func,
+        response_model=response_model,
+        methods=["POST"],
+    )
 
 
 # if __name__ == '__main__':
