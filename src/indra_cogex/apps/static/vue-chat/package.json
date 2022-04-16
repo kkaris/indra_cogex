@@ -1,0 +1,24 @@
+{
+  "name": "cogex-chat",
+  "version": "0.0.1",
+  "author": "Klas Karis <karisklas@duck.com>",
+  "main": "dist/CogexChat.js",
+  "unpkg": "dist/CogexChat.umd.min.js",
+  "jsdeliver": "dist/CogexChat.umd.min.js",
+  "scripts": {
+    "build": "vue-cli-service build --target lib --name CogexChat src/index.js",
+    "lint": "vue-cli-service lint",
+    "serve": "vue-cli-service serve --target lib --name CogexChat src/index.js",
+    "test": "npm run watch -- --mode development"
+  },
+  "dependencies": {
+    "@vue/cli-service": "^5.0.4",
+    "core-js": "^3.6.5",
+    "vue": "^3.2.33"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ]
+}

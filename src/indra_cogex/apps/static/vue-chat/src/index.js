@@ -1,0 +1,13 @@
+import components from "./components";
+
+const plugin = {
+    install(Vue) {
+        for (const prop in components) {
+            if (components.hasOwnProperty(prop)) {
+                Vue.component(prop, components[prop]);
+            }
+        }
+    }
+};
+
+export default plugin;
