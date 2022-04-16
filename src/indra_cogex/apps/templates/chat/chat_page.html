@@ -1,9 +1,16 @@
 {% extends "base.html" %}
 
-{% block styles %}
+{% block head %}
     {{ super() }}
-    <!-- Chat app css -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='chat/css/app.css') }}">
+
+    {% block styles %}
+        {{ super() }}
+        <!-- Chat app css -->
+        <link rel="stylesheet" href="{{ url_for('static', filename='chat/css/app.css') }}">
+        {# TODO Add CSS later when there is any to load <link rel="stylesheet" href="{{ url_for('chat.serve_vue', filename='') }}">#}
+    {% endblock %}
+
+
 {% endblock %}
 
 {% block container %}
@@ -48,13 +55,50 @@
             </div>
         </div>
     </div>
+    <div id="vue-app">
+        <p>Vue stuff goes here</p>
+        <InputText></InputText>
+        <InputTextArea></InputTextArea>
+    </div>
 {% endblock %}
 
 {% block scripts %}
     {{ super() }}
-    <!-- Chat app setup -->
+    <!-- Load Pusher -->
     <script src="https://js.pusher.com/4.0/pusher.min.js"></script>
+    <!--- Vue 3 -->
+    <script src="https://unpkg.com/vue@3"></script>
+    <!--- Locally served vue components -->
+    <script src="{{ url_for('chat.serve_vue', file='CogexChat.umd.min.js') }}"></script>
+
     <script>
+        // Import components
+        const {InputText, InputTextArea} = CogexChat;
+
+        // Vue app
+        const {createApp} = Vue;
+        const app = createApp({
+            components: {
+                InputText,
+                InputTextArea
+            },
+            data() {
+                return {
+                    messages: [],
+                    user: {
+                        name: '',
+                        email: ''
+                    },
+                    loading: false,
+                    error: false,
+                    errorMessage: ''
+                }
+            }
+        })
+        app.component('InputText', InputText);
+        app.component('InputTextArea', InputTextArea);
+        app.mount('#vue-app');
+
         const pusher = new Pusher('{{ pusher_app_key }}', {
             authEndpoint: '{{ url_for('chat.pusher_authentication') }}',
             cluster: 'mt1',
