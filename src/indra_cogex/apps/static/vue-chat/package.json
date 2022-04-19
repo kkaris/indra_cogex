@@ -1,8 +1,9 @@
 {
   "name": "cogex-chat",
   "version": "0.0.1",
+  "private": false,
   "author": "Klas Karis <karisklas@duck.com>",
-  "main": "dist/CogexChat.js",
+  "main": "dist/CogexChat.common.js",
   "unpkg": "dist/CogexChat.umd.min.js",
   "jsdeliver": "dist/CogexChat.umd.min.js",
   "scripts": {
@@ -12,9 +13,31 @@
     "test": "npm run watch -- --mode development"
   },
   "dependencies": {
-    "@vue/cli-service": "^5.0.4",
     "core-js": "^3.6.5",
     "vue": "^3.2.33"
+  },
+  "devDependencies": {
+    "@vue/cli-plugin-babel": "~4.5.13",
+    "@vue/cli-plugin-eslint": "~4.5.13",
+    "@vue/cli-service": "~4.5.17",
+    "@vue/compiler-sfc": "^3.0.0",
+    "babel-eslint": "^10.1.0",
+    "eslint": "^5.16.0",
+    "eslint-plugin-vue": "^5.0.0",
+    "vue-template-compiler": "^2.6.14"
+  },
+  "eslintConfig": {
+    "root": true,
+    "env": {
+      "es6": true,
+      "node": true
+    },
+    "parserOptions": {
+      "ecmaVersion": "latest"
+    },
+    "rules": {
+      "no-console": "off"
+    }
   },
   "browserslist": [
     "> 1%",

@@ -7,7 +7,8 @@
         {{ super() }}
         <!-- Chat app css -->
         <link rel="stylesheet" href="{{ url_for('static', filename='chat/css/app.css') }}">
-        {# TODO Add CSS later when there is any to load <link rel="stylesheet" href="{{ url_for('chat.serve_vue', filename='') }}">#}
+        {# TODO Add CSS later when there is anything to load <link rel="stylesheet" href="{{ url_for('chat.serve_vue', filename='') }}">#}
+{#        <link rel="stylesheet" href="{{ url_for('chat.serve_vue', file='IndralabVue.css') }}">#}
     {% endblock %}
 
 
@@ -55,11 +56,46 @@
             </div>
         </div>
     </div>
+    {% raw %}
     <div id="vue-app">
         <p>Vue stuff goes here</p>
-        <InputText></InputText>
-        <InputTextArea></InputTextArea>
+
+        <div class="row">
+            <div class="col-6">
+                <span>First message: {{ messages[0] }}</span>
+            </div>
+            <div class="col-6">
+                <span>input-text component should be here</span>
+                <input-text></input-text>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-6">
+                <span>Second message: {{ messages[1] }}</span>
+            </div>
+            <div class="col-6">
+                <span>input-text-area component should be here</span>
+                <input-text-area></input-text-area>
+            </div>
+        </div>
+
+        <!--
+        <div class="list-group list-group-flush">
+            <Statement
+                    class="list-group-item"
+                    :key="st_obj.hash"
+                    :evidence="st_obj.ev_array"
+                    :english="st_obj.english"
+                    :hash="st_obj.hash"
+                    :sources="st_obj.sources"
+                    :total_evidence="st_obj.total_evidence"
+                    :loadable="false"
+            ></Statement>
+        </div>
+        -->
+        <!-- <HelloWorld msg="Vue is working"/> -->
     </div>
+    {% endraw %}
 {% endblock %}
 
 {% block scripts %}
@@ -69,34 +105,82 @@
     <!--- Vue 3 -->
     <script src="https://unpkg.com/vue@3"></script>
     <!--- Locally served vue components -->
-    <script src="{{ url_for('chat.serve_vue', file='CogexChat.umd.min.js') }}"></script>
+{#    <script src="{{ url_for('chat.serve_vue', file='IndralabVue.umd.min.js') }}"></script>#}
+            <script src="{{ url_for('chat.serve_vue', file='CogexChat.umd.js') }}"></script>
+    {#    <script src="{{ url_for('chat.serve_vue', file='TestApp.umd.js') }}"></script>#}
 
     <script>
         // Import components
+        {#const {#}
+        {#    Statement,#}
+        {#    SourceDisplay,#}
+        {#    Evidence,#}
+        {#    CurationRow,#}
+        {#    RefLink,} = IndralabVue;#}
         const {InputText, InputTextArea} = CogexChat;
+        {#const {HelloWorld} = TestApp;#}
 
         // Vue app
         const {createApp} = Vue;
         const app = createApp({
             components: {
-                InputText,
-                InputTextArea
+                {#Statement,#}
+                {#SourceDisplay,#}
+                {#Evidence,#}
+                {#CurationRow,#}
+                {#RefLink,#}
+                {#InputText,#}
+                {#InputTextArea#}
             },
             data() {
                 return {
-                    messages: [],
+                    messages: ['Hello', 'Vue!'],
                     user: {
                         name: '',
                         email: ''
                     },
                     loading: false,
                     error: false,
-                    errorMessage: ''
+                    errorMessage: '',
+                    st_obj: {
+                        hash: '123456789',
+                        english: 'This is a statement',
+                        ev_array: [
+                            {
+                                text: 'This is evidence',
+                                pmid: '123456789',
+                                source_api: 'sparser',
+                                text_refs: {
+                                    PMID: '123456789'
+                                },
+                                num_curations: 0,
+                                source_hash: '123456789',
+                                stmt_hash: '123456789',
+                                original_json: {},
+                            }
+                        ],
+                        total_evidence: 1,
+                        sources: {},
+                        badges: {}
+                    },
                 }
             }
-        })
-        app.component('InputText', InputText);
-        app.component('InputTextArea', InputTextArea);
+        });
+
+        // Register components
+        {#app.component('Statement', Statement);#}
+        {#app.component('SourceDisplay', SourceDisplay);#}
+        {#app.component('Evidence', Evidence);#}
+        {#app.component('CurationRow', CurationRow);#}
+        {#app.component('RefLink', RefLink);#}
+        app.component('input-text', InputText);
+        app.component('input-text-area', InputTextArea);
+        {#app.component('HelloWorld', HelloWorld);#}
+        {#app.config.globalProperties.$stmt_hash_url = "/";  // URL to get more evidence for a statement#}
+        {#app.config.globalProperties.$curation_url = "/";#}
+        {#app.config.globalProperties.$curation_list_url = "/";#}
+        {#app.config.globalProperties.$sources = {};#}
+        {#app.config.compilerOptions.isCustomElement = (tag) => tag.includes('-');#}
         app.mount('#vue-app');
 
         const pusher = new Pusher('{{ pusher_app_key }}', {
@@ -110,3 +194,15 @@
     <script type="text/javascript" src="{{ url_for('static', filename='chat/js/axios.js') }}"></script>
     <script type="text/javascript" src="{{ url_for('static', filename='chat/js/app.js') }}"></script>
 {% endblock %}
+<script>
+    import InputText from "../../static/vue-chat/src/components/InputText";
+    export default {
+        components: {InputText}
+    }
+</script>
+<script>
+    import InputTextArea from "../../static/vue-chat/src/components/InputTextArea";
+    export default {
+        components: {InputTextArea}
+    }
+</script>
