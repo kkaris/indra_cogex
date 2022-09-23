@@ -2,9 +2,11 @@
 Tests functionalities related to the CoGEx web service serving INDRA Discovery
 """
 import json
+from typing import Iterable
 
 from indra.statements import Evidence, Agent, Activation
 from indra_cogex.apps.utils import unicode_escape, _stmt_to_row
+from indra_cogex.apps.queries_web.helpers import get_docstring
 
 
 def test_unicode_double_escape():
@@ -59,3 +61,42 @@ def test__stmt_to_row():
     assert 'null' in ev_array
     assert sources == json.dumps(source_counts)
     assert english == '"<b>A</b> activates <b>b</b>."'
+
+
+def test_rest_api_type_annotation():
+    def my_func(mystr: str, my_iter: Iterable[str]) -> str:
+        """Top level description
+
+        Parameters
+        ----------
+        mystr :
+            A string.
+        my_iter :
+            An Iterable over strings.
+
+        Returns
+        -------
+        :
+            A longer string.
+        """
+        return mystr + ",".join(my_iter)
+
+    # The extra space between parameter descriptions is
+    parsed_docstr = """Top level description
+
+Parameters
+----------
+mystr : str
+    A string.
+
+my_iter : List[str]
+    An Iterable over strings.
+
+Returns
+-------
+str
+    A longer string.
+"""
+    short, full_docstr = get_docstring(my_func)
+    assert short == parsed_docstr.split("\n")[0], short
+    assert full_docstr == parsed_docstr, full_docstr
