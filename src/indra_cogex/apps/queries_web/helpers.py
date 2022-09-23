@@ -24,6 +24,7 @@ __all__ = [
     "get_web_return_annotation",
     "get_docstring",
     "ParseError",
+    "get_str_type_annotation"
 ]
 
 
@@ -145,6 +146,14 @@ def get_web_return_annotation(sig: Signature) -> Type:
         return return_annotation
 
 
+def get_str_type_annotation(str_type: str) -> str:
+    if "Iterable" in str_type:
+        str_type = str_type.replace("Iterable", "List")
+    if "Tuple" in str_type:
+        str_type = str_type.replace("Tuple", "List")
+    return str_type
+
+
 def get_docstring(
     fun: Callable, skip_params: Optional[Set[str]] = None
 ) -> Tuple[str, str]:
@@ -196,6 +205,9 @@ Returns
         else:
             annot = sig.parameters[param.arg_name].annotation
         str_type = str(annot).replace("typing.", "")
+        if "<class" in str_type:
+            str_type = str_type.replace("<class '", "").replace("'>", "").strip()
+        str_type = get_str_type_annotation(str_type)
 
         param_list.append(
             param_templ.format(
@@ -204,8 +216,12 @@ Returns
         )
     params = "\n\n".join(param_list)
 
+    ret_str_type = str(get_web_return_annotation(sig)).replace("typing.", "")
+    if "<class" in ret_str_type:
+        ret_str_type = ret_str_type.replace("<class '", "").replace("'>", "").strip()
+
     return_str = ret_templ.format(
-        typing=str(get_web_return_annotation(sig)).replace("typing.", ""),
+        typing=ret_str_type,
         description=parsed_doc.returns.description,
     )
 
