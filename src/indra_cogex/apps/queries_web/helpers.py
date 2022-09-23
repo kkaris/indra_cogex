@@ -186,7 +186,7 @@ Returns
     param_list = []
     for param in parsed_doc.params:
         # Skip client, evidence_map,
-        if param.arg_name in skip_params:
+        if skip_params and param.arg_name in skip_params:
             continue
 
         if param.arg_name == "stmt_hash":
