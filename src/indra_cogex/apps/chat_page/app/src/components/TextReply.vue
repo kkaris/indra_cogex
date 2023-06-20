@@ -246,8 +246,10 @@ export default {
 
         case "url_list":
           return null; // Always show handled in template
+
+        // Return the string
         case "string":
-          // Return the string
+        case "str":
           return obj.value;
         default:
           console.log("In switch-case; unhandled object type: " + obj.type);
