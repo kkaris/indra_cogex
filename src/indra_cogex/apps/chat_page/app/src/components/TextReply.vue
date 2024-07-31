@@ -16,6 +16,13 @@
       >
         <!-- No object: just display the text as innerHtml -->
         <span v-if="txtObj.object === null" v-html="txtObj.text"></span>
+        <!-- type === str: plain text -->
+        <span
+          v-else-if="
+            txtObj.object.type === 'str' && txtObj.object.role === 'fixed'
+          "
+          v-html="txtObj.text"
+        ></span>
         <!-- A single agent from query: display as AgentModal -->
         <template
           v-else-if="
@@ -118,7 +125,7 @@ export default {
     textObjectArray() {
       // Locate all references to text objects in raw text
 
-      // Contains objects with entries: "text", "object"
+      // Contains objects with entries: "text", "object", "reference"
       // "text" is the text to show, "object" is the object representing the text (null if plain text)
       let txtObjs = [];
       const rawText = this.raw_text || "";
@@ -247,6 +254,7 @@ export default {
         case "url_list":
           return null; // Always show handled in template
         case "string":
+        case "str":
           // Return the string
           return obj.value;
         default:
