@@ -205,7 +205,7 @@ def main(
         sudo_prefix = "" if not with_sudo else "sudo"
         command = dedent(
             f"""\
-        {sudo_prefix} neo4j-admin import \\
+        {sudo_prefix} neo4j-admin database import \\
           --database=indra \\
           --delimiter='TAB' \\
           --skip-duplicate-nodes=true \\
