@@ -5,7 +5,6 @@ import csv
 import gzip
 import json
 import tqdm
-import codecs
 import pandas
 import pickle
 from adeft.download import get_available_models
