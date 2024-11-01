@@ -212,6 +212,10 @@ if __name__ == "__main__":
                          "config to db_config.ini")
     logger.info("Principal db is available")
 
+    # Get db info id to kb name mapping
+    res = db.select_all(db.DBInfo)
+    kb_mapping = {r.id: r.db_name for r in res}
+
     # This checks if there are any adeft models available. They are needed to
     adeft_model_count = len(get_available_models())
     if adeft_model_count == 0:
@@ -339,7 +343,15 @@ if __name__ == "__main__":
                 stmts = ac.map_sequence(stmts)
                 for stmt in stmts:
                     stmt_hash = stmt.get_hash(refresh=True)
-                    source_counts[stmt_hash][stmt.evidence[0].source_api] += 1
+                    src_api = stmt.evidence[0].source_api
+                    if db_info_id == "\\N":
+                        # For readers, source_api == source name
+                        source_name = src_api
+                    else:
+                        # For knowledge bases, the db_info_id is used to get the
+                        # correct source name for the source count
+                        source_name = kb_mapping[int(db_info_id)]
+                    source_counts[stmt_hash][source_name] += 1
                 rows = [(stmt.get_hash(), json.dumps(stmt.to_json())) for stmt in stmts]
                 writer.writerows(rows)
 
