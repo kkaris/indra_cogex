@@ -15,29 +15,44 @@ from ..representation import Node, Relation, indra_stmts_from_relations, norm_id
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    # Gene expression
     "get_genes_in_tissue",
     "get_tissues_for_gene",
     "is_gene_in_tissue",
+
+    # GO terms
     "get_go_terms_for_gene",
     "get_genes_for_go_term",
     "is_go_term_for_gene",
+
+    # Clinical trials
     "get_trials_for_drug",
     "get_trials_for_disease",
     "get_drugs_for_trial",
     "get_diseases_for_trial",
+
+    # <Pathways> ***
     "get_pathways_for_gene",
     "get_shared_pathways_for_genes",
     "get_genes_for_pathway",
     "is_gene_in_pathway",
+
+    # Drug (side effects)
     "get_side_effects_for_drug",
     "get_drugs_for_side_effect",
     "is_side_effect_for_drug",
+
+    # Ontology
     "get_ontology_child_terms",
     "get_ontology_parent_terms",
     "isa_or_partof",
+
+    # Publications, Publishers, Journals
     "get_pmids_for_mesh",
     "get_mesh_ids_for_pmid",
     "get_mesh_ids_for_pmids",
+
+    # Statements
     "get_evidences_for_mesh",
     "get_evidences_for_stmt_hash",
     "get_evidences_for_stmt_hashes",
@@ -47,28 +62,40 @@ __all__ = [
     "get_stmts_meta_for_stmt_hashes",
     "get_stmts_for_stmt_hashes",
     "get_statements",
+
+    # Gene mutations ## Todo: merge with below ***
     "is_gene_mutated",
     "get_mutated_genes",
+
+    # Drug (sensitivity)
     "get_drugs_for_target",
     "get_drugs_for_targets",
     "get_targets_for_drug",
     "get_targets_for_drugs",
     "is_drug_target",
+
+    # <cell type - marker associations> (get better name)
     "get_markers_for_cell_type",
     "get_cell_types_for_marker",
     "is_marker_for_cell_type",
+
+    # Disease phenotype associations
     "get_phenotypes_for_disease",
     "get_diseases_for_phenotype",
     "has_phenotype",
     "get_genes_for_phenotype",
     "get_phenotypes_for_gene",
     "has_phenotype_gene",
+
+    # Publications, Publishers, Journals (todo: merge with above)
     "get_publisher_for_journal",
     "get_journals_for_publisher",
     "is_journal_published_by",
     "get_journal_for_publication",
     "get_publications_for_journal",
     "is_published_in_journal",
+
+    # Gene/variant - Disease associations
     "get_diseases_for_gene",
     "get_genes_for_disease",
     "has_gene_disease_association",
@@ -78,32 +105,51 @@ __all__ = [
     "get_genes_for_variant",
     "get_variants_for_gene",
     "has_variant_gene_association",
+
+    # <NIH projects> (look in indra_cogex/sources/nih_reporter/__init__.py),
+    # get a better name for this
     "get_publications_for_project",
     "get_clinical_trials_for_project",
     "get_patents_for_project",
     "get_projects_for_publication",
     "get_projects_for_clinical_trial",
     "get_projects_for_patent",
+
+    # Gene - Domain associations
     "get_domains_for_gene",
     "get_genes_for_domain",
     "gene_has_domain",
+
+    # Gene - phenotype
     "get_phenotypes_for_variant_gwas",
     "get_variants_for_phenotype_gwas",
     "has_variant_phenotype_association",
+
+    # Drug indications - also rename functions with 'molecule' -> 'drug'
     "get_indications_for_molecule",
     "get_molecules_for_indication",
     "molecule_has_indication",
+
+    # Gene-Gene codependence
     "get_codependents_for_gene",
     "gene_has_codependency",
+
+    # Gene Enzyme activity
     "get_enzyme_activities_for_gene",
     "get_genes_for_enzyme_activity",
     "has_enzyme_activity",
+
+    # fixme: *** Merge with above
     "get_cell_lines_with_mutation",
     "get_mutated_genes_in_cell_line",
     "is_gene_mutated_in_cell_line",
+
+    # Cell line copy number alterations
     "get_cell_lines_with_cna",
     "get_cna_genes_in_cell_line",
     "has_cna_in_cell_line",
+
+    # Cell line drug sensitivity
     "get_drugs_for_sensitive_cell_line",
     "get_sensitive_cell_lines_for_drug",
     "is_cell_line_sensitive_to_drug",
@@ -1545,7 +1591,10 @@ def get_schema_graph(*, client: Neo4jClient) -> nx.MultiDiGraph:
 
 
 # CCLE
-
+## fixme: same as below in the following functions, merge them
+##  - get_cell_lines_with_mutation
+##  - get_mutated_genes_in_cell_line
+##  - is_gene_mutated_in_cell_line
 
 @autoclient()
 def is_gene_mutated(
