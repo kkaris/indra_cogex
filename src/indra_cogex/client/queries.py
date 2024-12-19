@@ -144,12 +144,10 @@ __all__ = [
     "get_mutated_genes_in_cell_line",
     "is_gene_mutated_in_cell_line",
 
-    # Cell line copy number alterations
+    # Cell lines, copy number alterations, drug sensitivity
     "get_cell_lines_with_cna",
     "get_cna_genes_in_cell_line",
     "has_cna_in_cell_line",
-
-    # Cell line drug sensitivity
     "get_drugs_for_sensitive_cell_line",
     "get_sensitive_cell_lines_for_drug",
     "is_cell_line_sensitive_to_drug",
