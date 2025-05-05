@@ -225,10 +225,24 @@ def get_correct_mesh_id(mesh_id, mesh_term=None):
     return None
 
 
-def _get_phase(phase_string: str) -> int:
-    if pd.notna(phase_string) and phase_string[-1].isdigit():
-        return int(phase_string[-1])
-    return -1
+def _get_phase(phase_string) -> int:
+    # e.g. "PHASE1", "PHASE2|PHASE3", "EARLY_PHASE1" "PHASE4", "NA", NaN
+    if pd.isna(phase_string):
+        return -1
+
+    if phase_string.lower() == "na":
+        return -1
+
+    # Split the string
+    phases = phase_string.split("|")
+    max_phase = max(
+        (
+            int(phase[-1]) if phase[-1].isdigit() else -1
+            for phase in phases
+        ),
+        default=-1,
+    )
+    return max_phase if max_phase > 0 else -1
 
 
 def process_df(df: pd.DataFrame):
