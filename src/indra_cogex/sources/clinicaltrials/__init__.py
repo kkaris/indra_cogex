@@ -56,12 +56,12 @@ class ClinicaltrialsProcessor(Processor):
         nctid_to_data = {}
         yielded_nodes = set()
         for _, row in tqdm.tqdm(self.df.iterrows(), total=len(self.df)):
-            nctid_to_data[row["NCTId"]] = {
-                "study_type": or_na(row["StudyType"]),  # observational, interventional
+            nctid_to_data[row["NCT Number"]] = {
+                "study_type": or_na(row["Study Type"]),  # observational, interventional
                 "randomized:boolean": row["randomized"],
-                "status": or_na(row["OverallStatus"]),  # Completed, Active, Recruiting
+                "status": or_na(row["Study Status"]),  # Completed, Active, Recruiting
                 "phase:int": row["Phase"],
-                "why_stopped": or_na(row["WhyStopped"]),
+                #"why_stopped": or_na(row["WhyStopped"]), # Fixme: not available in CSV download
                 "start_year:int": or_na(row["start_year"]),
                 "start_year_anticipated:boolean": row["start_year_anticipated"],
             }
