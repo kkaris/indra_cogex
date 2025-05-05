@@ -13,7 +13,7 @@ from indra.databases import mesh_client
 from indra_cogex.sources.processor import Processor
 from indra_cogex.representation import Node, Relation
 from indra_cogex.sources.clinicaltrials.download import ensure_clinical_trials_df
-
+from indra_cogex.sources.utils import get_bool
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +22,8 @@ class ClinicaltrialsProcessor(Processor):
     name = "clinicaltrials"
     node_types = ["BioEntity", "ClinicalTrial"]
 
-    def __init__(self, path: Union[str, Path, None] = None):
-        if path is not None:
-            self.df = pd.read_csv(path, sep=",", skiprows=10)
-        else:
-            self.df = ensure_clinical_trials_df()
+    def __init__(self):
+        self.df = ensure_clinical_trials_df()
         process_df(self.df)
 
         self.has_trial_cond_ns = []
@@ -249,29 +246,40 @@ def process_df(df: pd.DataFrame):
     """Clean up values in DataFrame"""
     # Create start year column from StartDate
     df["start_year"] = (
-        df["StartDate"]
-        .map(lambda s: None if pd.isna(s) else int(s[-4:]))
+        df["Start Date"]
+        # Format is "YYYY-MM-DD" or "YYYY-MM"
+        .map(lambda s: None if pd.isna(s) else s.split("-")[0])
         .astype("Int64")
     )
 
     # randomized, Non-Randomized
-    df["randomized"] = df["DesignAllocation"].map(
-        lambda s: "true" if pd.notna(s) and s == "Randomized" else "false"
+    df["randomized"] = df["Study Design"].map(
+        lambda s: "true" if pd.notna(s) and "Allocation: RANDOMIZED" in s else "false"
     )
 
-    # Indicate if the start_year is anticipated or not
-    df["start_year_anticipated"] = df["StartDateType"].map(
-        lambda s: "true" if pd.notna(s) and s == "Anticipated" else "false"
-    )
+    # Indicate if the start_year is anticipated or not - check if StartDate is in
+    # the future. Date format is "YYYY-MM-DD" or "YYYY-MM"
+    def _get_start_date_type(start_date: Union[str, None]) -> str:
+        if pd.isna(start_date):
+            return "false"
+        for fmt in ("%Y-%m-%d", "%Y-%m"):
+            try:
+                date = datetime.strptime(start_date, fmt).date()
+                return get_bool(date > datetime.now().date())
+            except ValueError:
+                continue
+        return "false"
+    df["start_year_anticipated"] = df["Start Date"].apply(_get_start_date_type)
 
     # Map the phase info for trial to integer (-1 for unknown)
-    df["Phase"] = df["Phase"].apply(_get_phase)
+    df["Phase"] = df["Phases"].apply(_get_phase)
 
     # Create a Neo4j compatible list of references
-    df["ReferencePMID"] = df["ReferencePMID"].map(
-        lambda s: ";".join(f"PUBMED:{pubmed_id}" for pubmed_id in s.split("|")),
-        na_action="ignore",
-    )
+    # FixMe: not available in CSV download
+    # df["ReferencePMID"] = df["ReferencePMID"].map(
+    #     lambda s: ";".join(f"PUBMED:{pubmed_id}" for pubmed_id in s.split("|")),
+    #     na_action="ignore",
+    # )
 
 
 def or_na(x):
