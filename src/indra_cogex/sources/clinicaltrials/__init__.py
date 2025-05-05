@@ -66,14 +66,13 @@ class ClinicaltrialsProcessor(Processor):
                 "start_year_anticipated:boolean": row["start_year_anticipated"],
             }
 
-            found_disease_gilda = False
-            for condition in str(row["Condition"]).split("|"):
+            # Ground Condition text
+            for condition in str(row["Conditions"]).split("|"):
                 cond_term = self.ground_condition(condition)
                 if cond_term:
-                    self.has_trial_nct.append(row["NCTId"])
+                    self.has_trial_nct.append(row["NCT Number"])
                     self.has_trial_cond_ns.append(cond_term.db)
                     self.has_trial_cond_id.append(cond_term.id)
-                    found_disease_gilda = True
                     if (cond_term.db, cond_term.id) not in yielded_nodes:
                         yield Node(
                             db_ns=cond_term.db,
@@ -82,7 +81,7 @@ class ClinicaltrialsProcessor(Processor):
                             data=dict(name=cond_term.entry_name),
                         )
                         yielded_nodes.add((cond_term.db, cond_term.id))
-            if not found_disease_gilda and not pd.isna(row["ConditionMeshId"]):
+            if pd.notna(row["ConditionMeshId"]):
                 for mesh_id, mesh_term in zip(
                     row["ConditionMeshId"].split("|"),
                     row["ConditionMeshTerm"].split("|"),
@@ -97,7 +96,7 @@ class ClinicaltrialsProcessor(Processor):
                         labels=["BioEntity"],
                     )
                     node_ns, node_id = stnd_node.db_ns, stnd_node.db_id
-                    self.has_trial_nct.append(row["NCTId"])
+                    self.has_trial_nct.append(row["NCT Number"])
                     self.has_trial_cond_ns.append(node_ns)
                     self.has_trial_cond_id.append(node_id)
                     if (node_ns, node_id) not in yielded_nodes:
@@ -116,7 +115,7 @@ class ClinicaltrialsProcessor(Processor):
                     if drug_term:
                         self.tested_in_int_ns.append(drug_term.db)
                         self.tested_in_int_id.append(drug_term.id)
-                        self.tested_in_nct.append(row["NCTId"])
+                        self.tested_in_nct.append(row["NCT Number"])
                         if (drug_term.db, drug_term.id) not in yielded_nodes:
                             yield Node(
                                 db_ns=drug_term.db,
@@ -144,7 +143,7 @@ class ClinicaltrialsProcessor(Processor):
                     node_ns, node_id = stnd_node.db_ns, stnd_node.db_id
                     self.tested_in_int_ns.append(node_ns)
                     self.tested_in_int_id.append(node_id)
-                    self.tested_in_nct.append(row["NCTId"])
+                    self.tested_in_nct.append(row["NCT Number"])
                     if (node_ns, node_id) not in yielded_nodes:
                         yield stnd_node
                         yielded_nodes.add((node_ns, node_id))
