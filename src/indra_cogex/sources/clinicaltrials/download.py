@@ -1,37 +1,6 @@
 """
-NOTE: ClinicalTrials.gov are working on a more modern API that is currently
-in Beta: https://beta.clinicaltrials.gov/data-about-studies/learn-about-api
-Once this API is released, we should switch to using it. The instructions for
-using the current/old API are below.
-
-Downloading the clinical trials data is now fully automated, but for posterity,
-here are the instructions for getting the file manually:
-
-To obtain the custom download for ingest, do the following::
-
-    1. Go to https://clinicaltrials.gov/api/gui/demo/simple_study_fields
-
-    2. Enter the following in the form:
-
-    expr=
-    fields=NCTId,BriefTitle,Condition,ConditionMeshTerm,ConditionMeshId,InterventionName,InterventionType,InterventionMeshTerm,InterventionMeshId,StudyType
-    min_rnk=1
-    max_rnk=500000  # or any number larger than the current number of studies
-    fmt=csv
-
-    3. Send Request
-
-    4. Enter the captcha characters into the text box and then press enter
-    (make sure to use the enter key and not press any buttons).
-
-    5. The website will display "please wait… " for a couple of minutes, finally,
-    the Save to file button will be active.
-
-    6. Click the Save to file button to download the response as a txt file.
-
-    7. Rename the txt file to clinical_trials.csv and then compress it as
-    gzip clinical_trials.csv to get clinical_trials.csv.gz, then place
-    this file into <pystow home>/indra/cogex/clinicaltrials/
+Download and parse the ClinicalTrials.gov data using the v2 API.
+See https://clinicaltrials.gov/data-api/api
 """
 
 from typing import Optional, List
@@ -45,14 +14,16 @@ import io
 __all__ = [
     "CLINICAL_TRIALS_PATH",
     "ensure_clinical_trials_df",
-    "get_clinical_trials_df",
 ]
 
-CLINICAL_TRIALS_PATH = pystow.join(
+API_URL = "https://clinicaltrials.gov/api/v2/studies"
+CLINICAL_TRIALS_MODULE = pystow.join(
     "indra",
     "cogex",
-    "clinicaltrials",
-    name="clinical_trials.tsv.gz",
+    "clinicaltrials"
+)
+CLINICAL_TRIALS_PATH = CLINICAL_TRIALS_MODULE.joinpath(
+    "clinical_trials.tsv.gz"
 )
 
 #: The fields that are used by default. A full list can be found
@@ -79,77 +50,89 @@ DEFAULT_FIELDS = [
     "ReferencePMID",  # these are tagged as relevant by the author, but not necessarily about the trial
 ]
 
-
-def ensure_clinical_trials_df(*, refresh: bool = False) -> pd.DataFrame:
-    """Download and parse the ClinicalTrials.gov dataframe or load
-    it, if it's already available.
-
-    If refresh is set to true, it will overwrite the existing file.
-    """
-    if CLINICAL_TRIALS_PATH.is_file() and not refresh:
-        return pd.read_csv(CLINICAL_TRIALS_PATH, sep="\t")
-    df = get_clinical_trials_df()
-    df.to_csv(CLINICAL_TRIALS_PATH, sep="\t", index=False, compression="gzip")
-    return df
-
-
-def get_clinical_trials_df(
-    page_size: int = 1_000, fields: Optional[List[str]] = None
+def ensure_clinical_trials_df(
+    *,
+    refresh: bool = False,
+    page_size: int = 1000,
+    max_pages: Optional[int] = None
 ) -> pd.DataFrame:
-    """Download the ClinicalTrials.gov dataframe.
+    """Download and parse data from ClinicalTrials.gov using the v2 API
 
-    If fields is None, will default to :data:`FIELDS`.
+    Parameters
+    ----------
+    refresh :
+        If True, will re-download the data from ClinicalTrials.gov. If False,
+        will use the cached data if available.
+    page_size :
+        The number of trials to fetch per page. Defaults to 1000, which is also
+        the maximum allowed by the rest API.
+    max_pages :
+        The maximum number of pages to fetch. If None, will fetch all pages.
 
-    Download takes about 10 minutes and is shown with a progress bar.
+    Returns
+    -------
+    :
+        A pandas DataFrame containing the clinical trials data.
     """
-    if page_size > 1_000:
-        page_size = 1_000
-    if fields is None:
-        fields = DEFAULT_FIELDS
-    base_params = {
-        "expr": "",
-        "min_rnk": 1,
-        "max_rnk": page_size,
-        "fmt": "csv",
-        "fields": ",".join(fields),
-    }
-    url = "https://classic.clinicaltrials.gov/api/query/study_fields"
+    if CLINICAL_TRIALS_PATH.exists() and not refresh:
+        return pd.read_csv(CLINICAL_TRIALS_PATH, compression="gzip")
 
-    #: This is the number of dummy rows at the beginning of the document
-    #: before the actual CSV starts
-    skiprows = 9
+    params = {"format": "csv", "pageSize": page_size}
 
-    beginning = '"NStudiesAvail: '
-    res = requests.get(url, params=base_params)
-    for line in res.text.splitlines()[:skiprows]:
-        if line.startswith(beginning):
-            total = int(line[len(beginning):].strip('"'))
-            break
-    else:
-        raise ValueError("could not parse total trials")
+    # Get the total number of trials available from the API's json response
+    resp_json = requests.get(API_URL, params={"pageSize": 1, "countTotal": "true"})
+    resp_json.raise_for_status()
+    resp_json = resp_json.json()
+    total_trials = resp_json.get("totalCount", 0)
 
-    pages = 1 + total // page_size
-
-    tqdm.write(
-        f"There are {total:,} clinical trials available, iterable in {pages:,} pages of size {page_size:,}."
+    pbar = tqdm(
+        desc="Downloading ClinicalTrials.gov data",
+        total=total_trials if max_pages is None else max_pages * page_size,
+        unit="trial",
+        unit_scale=True,
     )
 
-    first_page_df = pd.read_csv(io.StringIO(res.text), skiprows=skiprows)
+    # First request: get header + first page of data
+    resp = requests.get(API_URL, params=params)
+    resp.raise_for_status()
+    text = resp.text
+    lines = text.splitlines()
 
-    dfs = [first_page_df]
+    # Extract header from the very first line
+    header = lines[0].split(",")
 
-    # start on page "1" because we already did page 0 above. Note that we're zero-indexed,
-    # so "1" is actually is the second page
-    for page in trange(1, pages, unit="page", desc="Downloading ClinicalTrials.gov"):
-        min_rnk = page_size * page + 1
-        max_rnk = page_size * (page + 1)
-        res = requests.get(
-            url, params={**base_params, "min_rnk": min_rnk, "max_rnk": max_rnk}
-        )
-        page_df = pd.read_csv(io.StringIO(res.text), skiprows=skiprows)
-        dfs.append(page_df)
+    # read first page normally (header=0)
+    df_pages = [pd.read_csv(io.StringIO(text))]
+    pbar.update(df_pages[0].shape[0])
 
-    return pd.concat(dfs)
+    # Page through the rest
+    token = resp.headers.get("X-Next-Page-Token")
+    while token:
+        params["pageToken"] = token
+        resp = requests.get(API_URL, params=params)
+        resp.raise_for_status()
+
+        # read with our saved header, and tell pandas there is no header row in this chunk
+        df = pd.read_csv(io.StringIO(resp.text), names=header, header=None)
+        df_pages.append(df)
+
+        # update the progress bar with the number of rows in this chunk
+        pbar.update(df.shape[0])
+
+        if max_pages is not None and len(df_pages) >= max_pages:
+            tqdm.write(f"Reached max pages: {max_pages}. Stopping download.")
+            break
+        token = resp.headers.get("X-Next-Page-Token")
+
+    pbar.close()
+
+    # Concatenate
+    df = pd.concat(df_pages, ignore_index=True)
+
+    # Save the dataframe
+    df.to_csv(CLINICAL_TRIALS_PATH, index=False, compression="gzip")
+
+    return df
 
 
 if __name__ == "__main__":
