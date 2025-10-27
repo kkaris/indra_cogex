@@ -14,6 +14,10 @@ import click
 import pystow
 from more_click import verbose_option
 
+from indra_cogex.sources.processor_util import (
+    check_duplicated_nodes,
+    check_missing_node_ids_in_edges
+)
 from . import processor_resolver
 from .processor import Processor
 from ..assembly import NodeAssembler
@@ -79,6 +83,12 @@ def _get_assembled_path(node_type: str) -> Path:
     help="If true, skips processors that are missing required input files without erroring.",
 )
 @click.option(
+    "--check-ingestion-files",
+    is_flag=True,
+    help="If true, checks the ingestion data files for duplicated entries in node files "
+         "and missing entries in edge files.",
+)
+@click.option(
     "--database_name",
     type=str,
     default="neo4j",
@@ -97,6 +107,7 @@ def main(
     with_sudo: bool,
     config: Optional[TextIO],
     skip_failed_processors: bool,
+    check_ingestion_files: bool,
     database_name: str,
 ):
     """Generate and import Neo4j nodes and edges tables."""
@@ -215,6 +226,17 @@ def main(
         assembled_path = _get_assembled_path(node_type)
         if assembled_path.exists():
             nodes_paths_for_import.append(assembled_path)
+
+    if check_ingestion_files:
+        node_ids = set()
+        for node_path in nodes_paths_for_import:
+            checked_nodes = check_duplicated_nodes(nodes_tsv_gz_file=node_path)
+            node_ids |= checked_nodes
+
+        for edge_path in edge_paths:
+            check_missing_node_ids_in_edges(
+                edges_tsv_gz_file=edge_path, node_ids=node_ids
+            )
 
     # Import the nodes
     if run_import:
