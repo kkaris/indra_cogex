@@ -41,7 +41,7 @@ def _get_assembled_path(node_type: str) -> Path:
     help="If true, builds all missing resources.",
 )
 @click.option(
-    "--force_process",
+    "--force-process",
     is_flag=True,
     help="If true, rebuilds all resources",
 )
@@ -51,23 +51,23 @@ def _get_assembled_path(node_type: str) -> Path:
     help="If true, assembles all (not yet assembled) nodes.",
 )
 @click.option(
-    "--force_assemble",
+    "--force-assemble",
     is_flag=True,
     help="If true, reassembles all nodes.",
 )
 @click.option(
-    "--run_import",
+    "--run-import",
     is_flag=True,
     help="If true, automatically loads the data through ``neo4j-admin import``",
 )
 @click.option(
-    "--force_import",
+    "--force-import",
     is_flag=True,
     help="If true, forces the import even if the database already exists. This "
          "sets the --force flag of neo4j-admin import.",
 )
 @click.option(
-    "--with_sudo",
+    "--with-sudo",
     is_flag=True,
     help="If true, sudo is prepended to the neo4j-admin import command",
 )
@@ -78,7 +78,7 @@ def _get_assembled_path(node_type: str) -> Path:
     " and values are dictionaries matching the __init__ parameters for the processor",
 )
 @click.option(
-    "--skip_failed_processors",
+    "--skip-failed-processors",
     is_flag=True,
     help="If true, skips processors that are missing required input files without erroring.",
 )
@@ -89,7 +89,7 @@ def _get_assembled_path(node_type: str) -> Path:
          "and missing entries in edge files.",
 )
 @click.option(
-    "--database_name",
+    "--database-name",
     type=str,
     default="neo4j",
     help="The name of the Neo4j database to import into (default: neo4j). NOTE: The "
