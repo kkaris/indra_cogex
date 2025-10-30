@@ -3,7 +3,6 @@
 """Run the sources CLI."""
 
 import json
-import os
 import pickle
 from collections import defaultdict
 from pathlib import Path
@@ -90,6 +89,12 @@ def _get_assembled_path(node_type: str) -> Path:
          "and missing entries in edge files.",
 )
 @click.option(
+    "--ingestion-manifest",
+    type=click.Path(exists=False, path_type=Path),
+    help="Path to a manifest file that will listing all node and edge files "
+         "that where imported."
+)
+@click.option(
     "--database-name",
     type=str,
     default="neo4j",
@@ -109,6 +114,7 @@ def main(
     config: Optional[TextIO],
     skip_failed_processors: bool,
     check_ingestion_files: bool,
+    ingestion_manifest: Optional[Path],
     database_name: str,
 ):
     """Generate and import Neo4j nodes and edges tables."""
@@ -231,6 +237,20 @@ def main(
         if assembled_path.exists():
             nodes_paths_for_import.append(assembled_path)
 
+    # Save the import paths
+    if ingestion_manifest:
+        if not ingestion_manifest.name.endswith(".json"):
+             ingestion_manifest = ingestion_manifest.with_suffix(".json")
+        click.secho(
+            f"Saving nodes paths for import to {ingestion_manifest}", fg="green", bold=True
+        )
+        with open(ingestion_manifest, "w") as fh:
+            _import_paths = {
+                "node_paths": nodes_paths_for_import,
+                "edge_paths": edge_paths,
+            }
+            json.dump(obj=_import_paths, fp=fh)
+
     if check_ingestion_files:
         click.secho("Checking ingestion files...", fg="green", bold=True)
         # Check for duplicated node IDs across all node files
@@ -249,6 +269,9 @@ def main(
             check_missing_node_ids_in_edges(
                 edges_tsv_gz_file=edge_path, node_ids=node_ids
             )
+        click.secho(
+            "Ingestion file check completed without errors.", fg="green", bold=True
+        )
 
     # Import the nodes
     if run_import:
