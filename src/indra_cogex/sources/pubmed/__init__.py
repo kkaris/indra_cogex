@@ -18,6 +18,8 @@ import os
 import re
 from abc import abstractmethod
 from hashlib import md5
+from time import sleep
+
 from itertools import chain
 from typing import Tuple, Mapping, Iterable, List, Set
 
@@ -561,6 +563,7 @@ def download_medline_pubmed_xml_resource(
     force: bool = False,
     raise_http_error: bool = False,
     raise_checksum_error: bool = False,
+    retries: int = 3,
 ) -> None:
     """Downloads the medline and pubmed data from the NCBI ftp site.
 
@@ -576,34 +579,59 @@ def download_medline_pubmed_xml_resource(
     raise_checksum_error :
         If True, will raise error instead of skipping the file when
         checksums do not match. Default: False.
+    retries :
+        Number of times to retry downloading a file in case of failure.
     """
+    retries = max(1, retries)
     for xml_file, stow, base_url in xml_path_generator(description="Downloading PubMed XML files"):
         # Check if resource already exists
         if not force and stow.exists():
             continue
 
         # Download the resource
-        response = requests.get(base_url + xml_file)
-        if response.status_code != 200:
-            if raise_http_error:
-                response.raise_for_status()
+        skip_download = False
+        for t in range(1, retries+1):
+            try:
+                response = requests.get(base_url + xml_file)
+                e = None
+            except requests.RequestException as e:
+                response = None
+            if response is None or response.status_code != 200:
+                if t == retries:
+                    if response is None and raise_http_error:
+                        raise ConnectionError(
+                            f"Failed to download {xml_file} after {retries} attempts: {e}"
+                        )
+                    elif response is not None and raise_http_error:
+                        response.raise_for_status()
+                    else:
+                        logger.warning(
+                            f"Skipping {xml_file} due to HTTP status {response.status_code}"
+                        )
+                        skip_download = True
+                        break
+                else:
+                    tqdm.write(
+                        f"Failed to download {xml_file} (HTTP status {response.status_code}), "
+                        f"retrying ({t}/{retries})..."
+                    )
+                    sleep(1)
             else:
-                logger.warning(
-                    f"Skipping {xml_file} due to HTTP status {response.status_code}"
-                )
-                continue
+                # Successful download: do MD5 check
+                md5_response = requests.get(base_url + xml_file + ".md5")
+                actual_checksum = md5(response.content).hexdigest()
+                expected_checksum = re.search(
+                    r"[0-9a-z]+(?=\n)", md5_response.content.decode("utf-8")
+                ).group()
+                if actual_checksum != expected_checksum:
+                    err_msg = f"Checksum does not match for {xml_file}. Download timeout?"
+                    if raise_checksum_error:
+                        raise ValueError(err_msg)
+                    logger.warning(err_msg)
+                    continue
+                break
 
-        md5_response = requests.get(base_url + xml_file + ".md5")
-        actual_checksum = md5(response.content).hexdigest()
-        expected_checksum = re.search(
-            r"[0-9a-z]+(?=\n)", md5_response.content.decode("utf-8")
-        ).group()
-        if actual_checksum != expected_checksum:
-            err_msg = f"Checksum does not match for {xml_file}. Download timeout?"
-            if raise_checksum_error:
-                raise ValueError(err_msg)
-            logger.warning(err_msg)
-            # todo: better handling of bad downloads, don't use the file?
+        if skip_download:
             continue
 
         # PyStow the file
