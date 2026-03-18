@@ -433,7 +433,9 @@ def process_mesh_xml_to_csv(
         return
 
     # Check resource files and download missing ones first
-    download_medline_pubmed_xml_resource(force=force)
+    download_medline_pubmed_xml_resource(
+        force=force, raise_http_error=True, raise_checksum_error=True
+    )
 
     # Loop the stowed xml files
     logger.info("Processing PubMed XML files")
