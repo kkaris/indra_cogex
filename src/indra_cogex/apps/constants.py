@@ -53,8 +53,8 @@ edge_labels = {
     "has_inclusion_criterion": "Trial Inclusion Criteria",
     "has_exclusion_criterion": "Trial Exclusion Criteria",
     "has_outcome": "Trial Outcomes",
-    "has_statistical_comparison": "Arm Comparisons",
-    "has_genetic_criterion": "Genetic Eligibility",
+    "has_statistical_comparison": "Trial Arm Comparisons",
+    "has_genetic_criterion": "Trial Genetic Eligibility",
 }
 
 INDRA_COGEX_WEB_LOCAL = (get_config("INDRA_COGEX_WEB_LOCAL") or "").lower() in {
