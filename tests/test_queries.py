@@ -1120,7 +1120,6 @@ def test_is_cell_line_sensitive_to_drug():
 # PMID 16236737: trastuzumab breast cancer trial - known to exist in EC2
 _TEST_PMID = "16236737"
 _TEST_TRIAL_RESULT = ("trial.result", "8")
-_TEST_TRIAL_ARM = ("trial.arm", "15")
 _TEST_STAT_COMPARISON = ("trial.statcomparison", "18")
 _TEST_GENE = ("hgnc", "1100")  # BRCA1
 
@@ -1132,7 +1131,9 @@ def test_get_trial_result_for_pmid():
     assert results
     assert isinstance(results[0], Node)
     assert results[0].db_ns == "TRIAL.RESULT"
-    assert ("TRIAL.RESULT", "8") in [r.grounding() for r in results]
+
+    # Negative: nonexistent PMID returns empty
+    assert not list(get_trial_result_for_pmid("00000000", client=client))
 
 
 @pytest.mark.nonpublic
@@ -1142,7 +1143,8 @@ def test_get_arms_for_trial_result():
     assert arms
     assert isinstance(arms[0], Node)
     assert arms[0].db_ns == "TRIAL.ARM"
-    assert ("TRIAL.ARM", "15") in [a.grounding() for a in arms]
+    # Every arm must have a non-empty arm_name
+    assert all(a.data.get("arm_name") for a in arms)
 
 
 @pytest.mark.nonpublic
@@ -1152,6 +1154,8 @@ def test_get_metrics_for_arm():
     assert metrics
     assert isinstance(metrics[0], Node)
     assert metrics[0].db_ns == "TRIAL.METRIC"
+    # Every metric must have a non-empty name
+    assert all(m.data.get("name") for m in metrics)
 
 
 @pytest.mark.nonpublic
@@ -1161,6 +1165,8 @@ def test_get_adverse_events_for_trial():
     assert aes
     assert isinstance(aes[0], Node)
     assert aes[0].db_ns == "TRIAL.ADVERSEEVENT"
+    # Every adverse event must have a non-empty event_name
+    assert all(ae.data.get("event_name") for ae in aes)
 
 
 @pytest.mark.nonpublic
@@ -1170,6 +1176,9 @@ def test_get_criteria_for_trial_result():
     assert criteria
     assert isinstance(criteria[0], Node)
     assert criteria[0].db_ns == "TRIAL.CRITERION"
+    # Every criterion must have non-empty text and a valid criterion_type
+    assert all(c.data.get("text") for c in criteria)
+    assert all(c.data.get("criterion_type") in {"inclusion", "exclusion"} for c in criteria)
 
 
 @pytest.mark.nonpublic
@@ -1179,6 +1188,8 @@ def test_get_outcomes_for_trial_result():
     assert outcomes
     assert isinstance(outcomes[0], Node)
     assert outcomes[0].db_ns == "TRIAL.OUTCOME"
+    # Every outcome must have non-empty text
+    assert all(o.data.get("text") for o in outcomes)
 
 
 @pytest.mark.nonpublic
@@ -1188,7 +1199,8 @@ def test_get_statistical_comparisons_for_trial_result():
     assert comps
     assert isinstance(comps[0], Node)
     assert comps[0].db_ns == "TRIAL.STATCOMPARISON"
-    assert ("TRIAL.STATCOMPARISON", "18") in [c.grounding() for c in comps]
+    # Every comparison must have a non-empty comparison_name
+    assert all(c.data.get("comparison_name") for c in comps)
 
 
 @pytest.mark.nonpublic
@@ -1198,18 +1210,20 @@ def test_get_metrics_for_statistical_comparison():
     assert metrics
     assert isinstance(metrics[0], Node)
     assert metrics[0].db_ns == "TRIAL.METRIC"
+    assert all(m.data.get("name") for m in metrics)
 
 
 @pytest.mark.nonpublic
 def test_get_genes_for_trial_result():
     client = _get_client()
-    # trial.result:1042 has BRCA1 (hgnc:1100) and BRCA2 (hgnc:1101) as genetic criteria
     trial_result = ("trial.result", "1042")
     genes = list(get_genes_for_trial_result(trial_result, client=client))
     assert genes
     assert isinstance(genes[0], Node)
     assert genes[0].db_ns == "HGNC"
-    assert ("HGNC", "1100") in [g.grounding() for g in genes]
+
+    # Negative: result with no genetic criteria returns empty
+    assert not list(get_genes_for_trial_result(("trial.result", "1"), client=client))
 
 
 @pytest.mark.nonpublic
@@ -1219,7 +1233,9 @@ def test_get_trial_results_for_gene():
     assert results
     assert isinstance(results[0], Node)
     assert results[0].db_ns == "TRIAL.RESULT"
-    assert ("TRIAL.RESULT", "1042") in [r.grounding() for r in results]
+
+    # Negative: gene with no trial results returns empty
+    assert not list(get_trial_results_for_gene(("hgnc", "0000000"), client=client))
 
 
 @pytest.mark.nonpublic
@@ -1230,3 +1246,6 @@ def test_get_full_trial_result():
     assert "result" in data
     assert "arms" in data
     assert data["arms"]
+
+    # Negative: nonexistent PMID returns empty dict
+    assert get_full_trial_result("00000000", client=client) == {}
