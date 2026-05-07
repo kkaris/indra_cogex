@@ -77,10 +77,9 @@ app.extensions[STATEMENT_CURATION_CACHE] = CurationCache()
 
 config_auth(app)
 
-# Secret key must be set to use flask-wtf, but there's no *really*
-# secure information in this app so it's okay to set randomly
+# Secret key must be stable across production workers.
 app.config["WTF_CSRF_ENABLED"] = False
-app.config["SECRET_KEY"] = os.urandom(32)
+app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or os.urandom(32)
 app.config["SWAGGER_UI_DOC_EXPANSION"] = "list"
 app.config["EXPLAIN_TEMPLATE_LOADING"] = False
 

@@ -138,6 +138,7 @@ def render_statements(
         remove_medscan=remove_medscan,
         source_counts_per_hash=source_counts_dict,
     )
+    network_stmt_hashes = []
     # Store hashes in session if requested
     if store_hashes_in_session and formatted_stmts:
         # Extract hashes from formatted_stmts (tuples with hash at index 2)
@@ -149,6 +150,7 @@ def render_statements(
                 hash_str = stmt_tuple[2]
                 # Remove quotes if present
                 hash_str = hash_str.strip('"\'')
+                network_stmt_hashes.append(hash_str)
                 # Convert to integer
                 statement_hashes.append(int(hash_str))
 
@@ -156,6 +158,7 @@ def render_statements(
             session['include_db_evidence'] = include_db_evidence
 
             logger.info(f"Stored {len(statement_hashes)} statement hashes in session")
+            logger.info(f"Prepared {len(network_stmt_hashes)} statement hashes for network payload")
         except (IndexError, ValueError, TypeError) as e:
             logger.error(f"Error storing statement hashes: {str(e)}")
 
@@ -177,6 +180,7 @@ def render_statements(
         sources_dict=sources_dict,
         include_db_evidence=include_db_evidence,
         is_proteocentric=is_proteocentric,
+        network_stmt_hashes=network_stmt_hashes,
         reverse_source_mappings=reverse_source_mappings,
         source_info=SOURCE_INFO,
         source_colors=DEFAULT_SOURCE_COLORS,
