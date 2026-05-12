@@ -54,10 +54,10 @@ such that entries appearing earlier should be easier to explore.
 
 def _database_text(s: str) -> str:
     return f"""\
-    INDRA statements already
-    appearing in high-quality reference databases like {s}
-    and statements that have already been curated are filtered out such
-    that only novel, potentially interesting statements are displayed.
+    Evidence from structured database sources such as {s} can be included
+    or excluded with the database evidence setting. When curation filtering
+    is enabled, previously curated statements are hidden so the list
+    emphasizes novel or unresolved findings.
     """
 
 
@@ -272,10 +272,11 @@ def _explore_mesh_helper(
         description=f"""\
             The topic explorer identifies INDRA Statements in publications
             annotated with the given Medical Subject Headings (MeSH) term
-            using INDRA CoGEx. INDRA statements already appearing in
-            high-quality reference databases and statements that have already
-            been curated are filtered out such that only novel, potentially
-            interesting statements are displayed. {EVIDENCE_TEXT}
+            using INDRA CoGEx. Evidence from structured database sources can
+            be included or excluded with the database evidence setting. When
+            curation filtering is enabled, previously curated statements are
+            hidden so the list emphasizes novel or unresolved findings.
+            {EVIDENCE_TEXT}
         """,
         include_db_evidence=include_db_evidence
     )
@@ -412,12 +413,13 @@ def goa():
         get_goa_source_counts,
         title="GO Annotation Explorer",
         description=f"""\
-            The Gene Ontology annotation explorer identifiers INDRA statements
+            The Gene Ontology annotation explorer identifies INDRA statements
             using INDRA CoGEx whose subjects are human genes/proteins and whose
-            objects are Gene Ontology terms. Statements whose gene-GO term pair
-            already appear in the Gene Ontology Annotation database and statements
-            that have already been curated are filtered out such that only novel,
-            potentially interesting statements are displayed. 
+            objects are Gene Ontology terms. Evidence from structured database
+            sources can be included or excluded with the database evidence
+            setting. When curation filtering is enabled, previously curated
+            statements are hidden so the list emphasizes novel or unresolved
+            findings.
             {EVIDENCE_TEXT}
         """,
         func_kwargs={'include_db_evidence': include_db_evidence},
@@ -552,7 +554,9 @@ def disprot(object_prefix: Optional[str] = None):
         title="DisProt Explorer",
         description=f"""\
             The DisProt explorer identifies INDRA statements using INDRA
-            CoGEx whose subjects are intrensically disordered proteins.
+            CoGEx whose subjects are intrinsically disordered proteins.
+            Evidence from structured database sources can be included or
+            excluded with the database evidence setting.
             {EVIDENCE_TEXT}
         """,
         func_kwargs=dict(object_prefix=object_prefix, include_db_evidence=include_db_evidence),
