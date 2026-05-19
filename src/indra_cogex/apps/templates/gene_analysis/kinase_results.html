@@ -46,6 +46,28 @@
     </script>
 {% endblock %}
 
+{% macro render_phosphosite_list(title, sites, badge_class) -%}
+    <h3>{{ title }}</h3>
+    {% set site_list = sites|list %}
+    {% set site_count = site_list|length %}
+    {% set preview_count = 60 %}
+    <p class="mb-1">
+        {% for phosphosite in site_list[:preview_count] %}
+            <span class="badge {{ badge_class }}">{{ phosphosite }}</span>
+        {% endfor %}
+    </p>
+    {% if site_count > preview_count %}
+        <details class="mb-3">
+            <summary>Show remaining {{ site_count - preview_count }} phosphosites</summary>
+            <p class="mt-1">
+                {% for phosphosite in site_list[preview_count:] %}
+                    <span class="badge {{ badge_class }}">{{ phosphosite }}</span>
+                {% endfor %}
+            </p>
+        </details>
+    {% endif %}
+{% endmacro %}
+
 {% macro render_kinase_table(df, table_id, phosphosites, minimum_evidence, minimum_belief) -%}
     <table class="table table-hover table-striped table-ora" id="{{ table_id }}" style="width: 100%;">
         <thead>
@@ -58,9 +80,13 @@
         </tr>
         </thead>
         <tbody>
-        {% for curie, name, p, mlp, q, mlq, statements in df.values %}
+        {% for curie, name, p, mlp, q, mlq, matched_phosphosites, statements in df.values %}
             <tr class="clickable-row"
                 data-statements='{{ statements | tojson }}'
+                data-statements-url="{{ url_for('search.search_kinase_statement_metadata',
+                                                kinase_id=curie,
+                                                minimum_evidence=minimum_evidence,
+                                                minimum_belief=minimum_belief) }}{% for site in matched_phosphosites %}&phosphosites={{ site | urlencode }}{% endfor %}"
                 data-regulator-name="{{ name | e }}">
                 <td><a href="https://bioregistry.io/{{ curie }}" target="_blank">{{ curie }}</a></td>
                 <td>{{ name }}</td>
@@ -70,7 +96,7 @@
                     <a href="{{ url_for('search.search_kinase_statements',
                                         kinase_id=curie,
                                         minimum_evidence=minimum_evidence,
-                                        minimum_belief=minimum_belief) }}{% for site in phosphosites %}&phosphosites={{ site }}{% endfor %}"
+                                        minimum_belief=minimum_belief) }}{% for site in matched_phosphosites %}&phosphosites={{ site | urlencode }}{% endfor %}"
                         target="_blank"
                         class="btn btn-primary btn-sm">View Statements</a>
                 </td>
@@ -83,24 +109,28 @@
     <div class="card card-body bg-light">
         <h1 class="display-3">Kinase Enrichment Analysis</h1>
         <div>
-            <h3>Phosphosite Query</h3>
-            <p>
-                {% for phosphosite in phosphosites %}
-                    <span class="badge badge-info">{{ phosphosite }}</span>
-                {% endfor %}
-            </p>
+            {{ render_phosphosite_list("Phosphosite Query", phosphosites, "badge-info") }}
+
+            <h3>Analysis Approach</h3>
+            {% if background_phosphosites %}
+                <p>
+                    This run uses your custom background as the enrichment universe. Submitted sites are
+                    intersected with that background before testing enrichment.
+                </p>
+            {% else %}
+                <p>
+                    This run tests enrichment among kinase-annotated phosphosites only. Submitted sites
+                    without kinase annotations are counted in the input summary but excluded from the
+                    Fisher test.
+                </p>
+            {% endif %}
 
             {% if background_phosphosites %}
-               <h3>Background Phosphosites</h3>
-               <p>
-                   {% for phosphosite in background_phosphosites %}
-                       <span class="badge badge-secondary">{{ phosphosite }}</span>
-                   {% endfor %}
-               </p>
+               {{ render_phosphosite_list("Background Phosphosites", background_phosphosites, "badge-secondary") }}
             {% else %}
                <h3>Background</h3>
                <p>
-                   <i>All phosphosites in the database were used as background.</i>
+                   <i>No custom background was provided. The enrichment background is the set of phosphosites with known kinase annotations.</i>
                </p>
             {% endif %}
 
@@ -113,6 +143,23 @@
                     Kinases with lower p-values are more likely to be involved in regulating the phosphorylation
                     patterns in your dataset.
                 </p>
+                {% if diagnostics %}
+                    <div class="alert alert-secondary py-2">
+                        <strong>Run summary:</strong>
+                        Parsed phosphosites: {{ diagnostics.get("parsed_phosphosite_count", phosphosites|length) }};
+                        Valid unique phosphosites: {{ diagnostics.get("valid_unique_phosphosite_count", "n/a") }};
+                        Used in enrichment universe: {{ diagnostics.get("used_in_enrichment_universe_count", "n/a") }};
+                        Known kinase-annotated overlap: {{ diagnostics.get("known_kinase_annotated_overlap", "n/a") }};
+                        Tested kinases: {{ diagnostics.get("tested_kinases", "n/a") }};
+                        Significant kinases at FDR &lt; {{ diagnostics.get("alpha", alpha) }}:
+                        {{ diagnostics.get("significant_kinases", "n/a") }}.
+                    </div>
+                {% endif %}
+                {% if results.empty %}
+                    <div class="alert alert-info">
+                        The run completed, but no kinase passed FDR &lt; {{ diagnostics.get("alpha", alpha) if diagnostics else alpha }}.
+                    </div>
+                {% endif %}
                 {{ render_kinase_table(results, "table-kinase", phosphosites, minimum_evidence, minimum_belief) }}
             </div>
         </div>

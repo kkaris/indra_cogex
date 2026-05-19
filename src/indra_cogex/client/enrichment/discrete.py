@@ -9,7 +9,6 @@ import pandas as pd
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import multipletests
 
-from indra_cogex.apps.search.search import get_kinase_phosphosite_statements
 from indra_cogex.client.enrichment.utils import (
     get_entity_to_regulators,
     get_entity_to_targets,
@@ -535,16 +534,11 @@ def kinase_ora(
         curie (kinase ID), name (kinase name), p (p-value), q (adjusted p-value), mlp (-log10 p), mlq (-log10 q).
     """
     phosphosite_ids = list(phosphosite_ids)  # Convert to list for multiple use
-
-    count = (
-        count_phosphosites(client=client)
-        if not background_phosphosite_ids
-        else len(background_phosphosite_ids)
-    )
-
+    input_phosphosites = set(phosphosite_ids)
     bg_phosphosites = (
         frozenset(background_phosphosite_ids) if background_phosphosite_ids else None
     )
+    alpha = kwargs.get("alpha") or 0.05
 
     kinase_to_phosphosites = get_kinase_phosphosites(
         client=client,
@@ -553,53 +547,81 @@ def kinase_ora(
         minimum_belief=minimum_belief
     )
 
-    if not kinase_to_phosphosites:
-        logger.warning("No kinase-phosphosite relationships found, returning empty DataFrame")
-        return pd.DataFrame(columns=['curie', 'name', 'p', 'q', 'mlp', 'mlq'])
-
-    # Check for overlap between query phosphosites and known phosphosite targets
     all_known_phosphosites = set()
     for phosphosites in kinase_to_phosphosites.values():
         all_known_phosphosites.update(phosphosites)
 
-    overlap = [ps for ps in phosphosite_ids if ps in all_known_phosphosites]
+    known_overlap = input_phosphosites & all_known_phosphosites
+    if bg_phosphosites:
+        query_for_ora = input_phosphosites & bg_phosphosites
+        count = len(bg_phosphosites)
+        universe_source = "custom_background"
+    else:
+        query_for_ora = known_overlap
+        count = len(all_known_phosphosites)
+        universe_source = "kinase_annotated_phosphosites"
 
-    if not overlap:
+    diagnostics = {
+        "parsed_phosphosite_count": len(phosphosite_ids),
+        "valid_unique_phosphosite_count": len(input_phosphosites),
+        "used_in_enrichment_universe_count": len(query_for_ora),
+        "known_kinase_annotated_overlap": len(known_overlap),
+        "tested_kinases": len(kinase_to_phosphosites),
+        "significant_kinases": 0,
+        "alpha": alpha,
+        "enrichment_universe_count": count,
+        "enrichment_universe_source": universe_source,
+        "kinase_annotation_universe_count": len(all_known_phosphosites),
+        "background_phosphosite_count": len(bg_phosphosites) if bg_phosphosites else None,
+    }
+
+    columns = [
+        'curie',
+        'name',
+        'p',
+        'mlp',
+        'q',
+        'mlq',
+        'matched_phosphosites',
+        'statements',
+    ]
+
+    if not kinase_to_phosphosites:
+        logger.warning("No kinase-phosphosite relationships found, returning empty DataFrame")
+        empty_df = pd.DataFrame(columns=columns)
+        empty_df.attrs["diagnostics"] = diagnostics
+        return empty_df
+
+    if not known_overlap:
         logger.warning("No overlap between query phosphosites and known targets, returning empty DataFrame")
-        return pd.DataFrame(columns=['curie', 'name', 'p', 'q', 'mlp', 'mlq', 'statements'])
+        empty_df = pd.DataFrame(columns=columns)
+        empty_df.attrs["diagnostics"] = diagnostics
+        return empty_df
 
     # Perform ORA
     df = _do_ora(
         curie_to_target_sets=kinase_to_phosphosites,
-        query=phosphosite_ids,
+        query=query_for_ora,
         count=count,
         **kwargs
     )
+    if "q" in df.columns:
+        diagnostics["significant_kinases"] = int((df["q"] < alpha).sum())
+    else:
+        diagnostics["significant_kinases"] = len(df)
 
-    # Attach INDRA statement metadata
-    if not df.empty and "curie" in df.columns:
-        curie_to_statements = {}
-        for curie in df["curie"].unique():
-            kinase_id = curie.lower()
-            stmt_list, _ = get_kinase_phosphosite_statements(
-                kinase_id=kinase_id,
-                phosphosites=[f"{gene}-{site}" for (gene, site) in phosphosite_ids],
-                minimum_belief=minimum_belief,
-                minimum_evidence=minimum_evidence_count,
-                client=client
-            )
-            curie_to_statements[curie] = [
-                {
-                    "gene": s.agent_list()[1].db_refs.get("HGNC"),
-                    "gene_name": s.agent_list()[1].name,
-                    "stmt_hash": s.get_hash(),
-                    "belief": s.belief,
-                    "evidence_count": len(s.evidence),
-                    "stmt_type": type(s).__name__
-                }
-                for s in stmt_list
-            ]
-        df["statements"] = df["curie"].map(curie_to_statements)
+    # Keep the historical column for template/API compatibility, but do not
+    # fetch statement evidence until the user clicks "View Statements".
+    curie_to_matches = {
+        curie: sorted(
+            f"{gene}-{site}"
+            for gene, site in (query_for_ora & phosphosites)
+        )
+        for (curie, _), phosphosites in kinase_to_phosphosites.items()
+    }
+    df["matched_phosphosites"] = df["curie"].map(curie_to_matches)
+    df["statements"] = [[] for _ in range(len(df))]
+    df.attrs["diagnostics"] = diagnostics
 
     return df
 

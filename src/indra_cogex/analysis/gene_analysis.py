@@ -411,22 +411,31 @@ def kinase_analysis(
         - q (adjusted p-value)
     """
     # Parse phosphosites
-    parsed_phosphosites, errors = parse_phosphosite_list(
-        [tuple(site.split("-")) for site in phosphosite_list]
-    )
+    raw_phosphosites, malformed_phosphosites = split_phosphosite_entries(phosphosite_list)
+    parsed_phosphosites, errors = parse_phosphosite_list(raw_phosphosites)
+    errors = malformed_phosphosites + errors
     if errors:
-        logger.error(f"Warning: Skipped invalid phosphosites: {errors}")
+        logger.warning(
+            "Skipped %d invalid phosphosites; examples=%s",
+            len(errors),
+            errors[:10],
+        )
 
     # Parse background if provided
     parsed_background = None
+    background_errors = []
     if background:
-        parsed_background, background_errors = parse_phosphosite_list(
-            [tuple(site.split("-")) for site in background]
-        )
+        raw_background, malformed_background = split_phosphosite_entries(background)
+        parsed_background, background_errors = parse_phosphosite_list(raw_background)
+        background_errors = malformed_background + background_errors
         if background_errors:
-            logger.error(f"Warning: Skipped invalid background phosphosites: {background_errors}")
+            logger.warning(
+                "Skipped %d invalid background phosphosites; examples=%s",
+                len(background_errors),
+                background_errors[:10],
+            )
 
-    return kinase_ora(
+    result = kinase_ora(
         client=client,
         phosphosite_ids=parsed_phosphosites,
         background_phosphosite_ids=parsed_background,
@@ -435,6 +444,24 @@ def kinase_analysis(
         minimum_evidence_count=minimum_evidence_count,
         minimum_belief=minimum_belief
     )
+    diagnostics = dict(result.attrs.get("diagnostics", {}))
+    diagnostics.update(
+        {
+            "parsed_phosphosite_count": len(phosphosite_list),
+            "valid_phosphosite_count": len(parsed_phosphosites),
+            "valid_unique_phosphosite_count": len(set(parsed_phosphosites)),
+            "invalid_phosphosite_count": len(errors),
+            "invalid_phosphosites": errors,
+            "parsed_background_phosphosite_count": len(background) if background else 0,
+            "valid_background_phosphosite_count": (
+                len(parsed_background) if parsed_background else 0
+            ),
+            "invalid_background_phosphosite_count": len(background_errors),
+            "invalid_background_phosphosites": background_errors,
+        }
+    )
+    result.attrs["diagnostics"] = diagnostics
+    return result
 
 
 def parse_gene_list(gene_list: List[str]) -> Tuple[Dict[str, str], List[str]]:
@@ -465,19 +492,43 @@ def is_valid_gene(gene: str) -> bool:
     if not isinstance(gene, str) or len(gene) == 0:
         return False
 
-    # UniProt ID pattern
-    uniprot_pattern = re.compile(r"^[OPQ][0-9][A-Z0-9]{3}[0-9](-\d+)?$")
-    if uniprot_pattern.match(gene):
+    if is_uniprot_id(gene):
         return True
 
-    # Gene symbols (allow alphanumeric but must start with a letter)
-    gene_pattern = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
+    # Gene symbols (allow alphanumeric/hyphen but must start with a letter)
+    gene_pattern = re.compile(r"^[A-Za-z][A-Za-z0-9-]*$")
     return bool(gene_pattern.match(gene))
+
+
+def is_uniprot_id(identifier: str) -> bool:
+    """Check if an identifier looks like a UniProt accession."""
+    if not isinstance(identifier, str):
+        return False
+    return bool(re.match(r"^[OPQ][0-9][A-Z0-9]{3}[0-9](-\d+)?$", identifier))
 
 
 def is_valid_phosphosite(site: str) -> bool:
     """Validate phosphosite format (e.g., S227, T345, Y100)."""
     return isinstance(site, str) and site[0] in {'S', 'T', 'Y', 'H'} and site[1:].isdigit()
+
+
+def split_phosphosite_entries(
+    phosphosite_list: Collection[str],
+) -> Tuple[List[Tuple[str, str]], List[str]]:
+    """Split phosphosite strings into (gene, site), preserving hyphenated genes."""
+    phosphosites = []
+    errors = []
+    for entry in phosphosite_list:
+        if not isinstance(entry, str) or "-" not in entry:
+            errors.append(str(entry))
+            continue
+        gene, site = entry.rsplit("-", 1)
+        gene, site = gene.strip(), site.strip()
+        if gene and site:
+            phosphosites.append((gene, site))
+        else:
+            errors.append(entry)
+    return phosphosites, errors
 
 
 def parse_phosphosite_list(
@@ -488,8 +539,11 @@ def parse_phosphosite_list(
     errors = []
 
     for identifier, site in phosphosite_list:
-        # Convert UniProt ID to gene symbol if needed
-        gene = uniprot_client.get_gene_name(identifier) or identifier
+        gene = (
+            uniprot_client.get_gene_name(identifier)
+            if is_uniprot_id(identifier)
+            else identifier
+        )
 
         if is_valid_gene(gene) and is_valid_phosphosite(site):
             phosphosites.append((gene, site))
@@ -497,4 +551,3 @@ def parse_phosphosite_list(
             errors.append(f"{identifier}:{site}")
 
     return phosphosites, errors
-

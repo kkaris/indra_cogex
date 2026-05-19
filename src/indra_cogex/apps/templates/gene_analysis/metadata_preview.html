@@ -159,6 +159,9 @@ class StatementMetadataPreview {
             // Handle main row expansion
             const row = e.target.closest('.clickable-row');
             if (row) {
+                if (e.target.closest('a, button')) {
+                    return;
+                }
                 this.toggleMetadataRow(row);
             }
         });
@@ -216,28 +219,49 @@ class StatementMetadataPreview {
         }
     }
 
-    /**
-     * Show metadata preview row
-     */
-    showMetadataRow(row, rowId) {
-        // Hide any other expanded rows first (optional - comment out for multiple expansions)
+    async showMetadataRow(row, rowId) {
         this.hideAllMetadataRows();
 
-        const statements = this.getStatementsData(row);
         const regulatorName = this.getRegulatorName(row);
         const tableId = this.getTableId(row);
         const isDownstream = this.isDownstreamDirection(tableId);
+        let statements = this.getStatementsData(row);
 
-        // Group and sort statements
+        if ((!statements || statements.length === 0) && row.getAttribute('data-statements-url')) {
+            const loadingRow = this.createMetadataRow(null, regulatorName, isDownstream, row.cells.length);
+            row.parentNode.insertBefore(loadingRow, row.nextSibling);
+            this.expandedRows.add(rowId);
+            this.updateToggleIndicator(row, true);
+            statements = await this.fetchStatementsData(row);
+            loadingRow.remove();
+            if (!this.expandedRows.has(rowId)) {
+                return;
+            }
+        }
+
         const groupedStatements = this.groupAndSortStatements(statements, regulatorName, isDownstream);
-
-        // Create and insert metadata row
         const metadataRow = this.createMetadataRow(groupedStatements, regulatorName, isDownstream, row.cells.length);
         row.parentNode.insertBefore(metadataRow, row.nextSibling);
-
-        // Update state
         this.expandedRows.add(rowId);
         this.updateToggleIndicator(row, true);
+    }
+
+    async fetchStatementsData(row) {
+        try {
+            const response = await fetch(row.getAttribute('data-statements-url'), {
+                headers: { 'Accept': 'application/json' },
+            });
+            if (!response.ok) {
+                throw new Error(`status ${response.status}`);
+            }
+            const data = await response.json();
+            const statements = Array.isArray(data) ? data : (data.statements || []);
+            row.setAttribute('data-statements', JSON.stringify(statements));
+            return statements;
+        } catch (e) {
+            console.warn('Failed to fetch statement metadata:', e);
+            return [];
+        }
     }
 
     /**
@@ -420,7 +444,9 @@ class StatementMetadataPreview {
         const content = document.createElement('div');
         content.className = 'metadata-preview-content';
 
-        if (!statements || statements.length === 0) {
+        if (statements === null) {
+            content.innerHTML = '<div class="metadata-no-statements">Loading statement metadata...</div>';
+        } else if (!statements || statements.length === 0) {
             content.innerHTML = '<div class="metadata-no-statements">No statement metadata available</div>';
         } else {
             const statementsHtml = statements.map(stmt =>
@@ -568,17 +594,15 @@ class StatementMetadataPreview {
     }
 }
 
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
-    new StatementMetadataPreview();
-});
+function initializeStatementMetadataPreview() {
+    if (!window.statementMetadataPreview) {
+        window.statementMetadataPreview = new StatementMetadataPreview();
+    }
+}
 
-// Also initialize if DOM is already loaded (for dynamic content)
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-        new StatementMetadataPreview();
-    });
+    document.addEventListener('DOMContentLoaded', initializeStatementMetadataPreview);
 } else {
-    new StatementMetadataPreview();
+    initializeStatementMetadataPreview();
 }
 </script>

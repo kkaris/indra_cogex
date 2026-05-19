@@ -1,5 +1,6 @@
 """Gene-centric blueprint."""
 from http import HTTPStatus
+import io
 from pathlib import Path
 from typing import List, Mapping, Tuple
 
@@ -9,8 +10,6 @@ from flask import url_for, abort
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, SubmitField, TextAreaField, StringField
 from wtforms.validators import DataRequired
-import io
-
 
 from indra_cogex.analysis.gene_analysis import (
     discrete_analysis,
@@ -388,6 +387,7 @@ def kinase_analysis_route():
                 phosphosites=phosphosites,
                 background_phosphosites=background_phosphosites,
                 results=results,
+                diagnostics=results.attrs.get("diagnostics", {}) if isinstance(results, pd.DataFrame) else {},
                 alpha=form.alpha.data,
                 minimum_evidence=form.minimum_evidence.data,
                 minimum_belief=form.minimum_belief.data,

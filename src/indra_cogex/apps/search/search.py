@@ -1103,7 +1103,10 @@ def get_kinase_phosphosite_statements(
         - List of INDRA statements representing the relationships
         - Dictionary mapping statement hashes to their evidence counts
     """
-    from indra_cogex.analysis.gene_analysis import parse_phosphosite_list
+    from indra_cogex.analysis.gene_analysis import (
+        parse_phosphosite_list,
+        split_phosphosite_entries,
+    )
     # Normalize kinase ID
     namespace = kinase_id.split(':')[0].lower()
     id_part = kinase_id.split(':')[1]
@@ -1116,11 +1119,16 @@ def get_kinase_phosphosite_statements(
         normalized_kinase = kinase_id.lower()
 
     # Parse phosphosites and convert UniProt IDs if needed
-    raw_phosphosites = [tuple(site.split("-")) for site in phosphosites if "-" in site]
+    raw_phosphosites, malformed_phosphosites = split_phosphosite_entries(phosphosites)
     processed_phosphosites, errors = parse_phosphosite_list(raw_phosphosites)
+    errors = malformed_phosphosites + errors
 
     if errors:
-        logger.debug(f"Some phosphosites could not be parsed: {errors}")
+        logger.debug(
+            "Statement lookup skipped %d invalid phosphosites; examples=%s",
+            len(errors),
+            errors[:10],
+        )
 
     gene_names = [gene for gene, _ in processed_phosphosites]
 
@@ -1178,20 +1186,10 @@ def get_kinase_phosphosite_statements(
 @jwt_required(optional=True)
 def search_kinase_statements():
     """Endpoint to get INDRA statements connecting kinases to phosphosites."""
-    kinase_id = request.args.get("kinase_id")
-    phosphosites = request.args.getlist("phosphosites")
-
-    try:
-        minimum_evidence = int(request.args.get("minimum_evidence") or 1)
-        minimum_belief = float(request.args.get("minimum_belief") or 0.0)
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid parameter values"}), 400
-
-    if not kinase_id:
-        return jsonify({"error": "kinase_id is required"}), 400
-
-    if not phosphosites:
-        return jsonify({"error": "No phosphosites provided"}), 400
+    args, error = _get_kinase_statement_request_args()
+    if error:
+        return error
+    kinase_id, phosphosites, minimum_evidence, minimum_belief = args
 
     try:
         statements, evidence_counts = get_kinase_phosphosite_statements(
@@ -1208,4 +1206,55 @@ def search_kinase_statements():
 
     except Exception as e:
         logger.error(f"Error in get_kinase_phosphosite_statements: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+def _get_kinase_statement_request_args():
+    kinase_id = request.args.get("kinase_id")
+    phosphosites = request.args.getlist("phosphosites")
+    try:
+        minimum_evidence = int(request.args.get("minimum_evidence") or 1)
+        minimum_belief = float(request.args.get("minimum_belief") or 0.0)
+    except (ValueError, TypeError):
+        return None, (jsonify({"error": "Invalid parameter values"}), 400)
+    if not kinase_id:
+        return None, (jsonify({"error": "kinase_id is required"}), 400)
+    if not phosphosites:
+        return None, (jsonify({"error": "No phosphosites provided"}), 400)
+    return (kinase_id, phosphosites, minimum_evidence, minimum_belief), None
+
+
+def _statement_preview_metadata(stmt):
+    agents = stmt.agent_list()
+    substrate = agents[1] if len(agents) > 1 else None
+    return {
+        "gene": substrate.db_refs.get("HGNC") if substrate else None,
+        "gene_name": substrate.name if substrate else None,
+        "stmt_hash": stmt.get_hash(),
+        "belief": stmt.belief,
+        "evidence_count": len(stmt.evidence),
+        "stmt_type": type(stmt).__name__,
+    }
+
+
+@search_blueprint.route("/kinase_statement_metadata/", methods=['GET'])
+@jwt_required(optional=True)
+def search_kinase_statement_metadata():
+    """Return lightweight statement metadata for kinase result row previews."""
+    args, error = _get_kinase_statement_request_args()
+    if error:
+        return error
+    kinase_id, phosphosites, minimum_evidence, minimum_belief = args
+
+    try:
+        statements, _ = get_kinase_phosphosite_statements(
+            kinase_id=kinase_id,
+            phosphosites=phosphosites,
+            minimum_belief=minimum_belief,
+            minimum_evidence=minimum_evidence,
+        )
+        metadata = [_statement_preview_metadata(s) for s in statements]
+        return jsonify({"statements": metadata})
+    except Exception as e:
+        logger.error(f"Error in search_kinase_statement_metadata: {str(e)}")
         return jsonify({"error": str(e)}), 500
