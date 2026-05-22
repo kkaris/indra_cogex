@@ -54,10 +54,8 @@ such that entries appearing earlier should be easier to explore.
 
 def _database_text(s: str) -> str:
     return f"""\
-    Evidence from structured database sources such as {s} can be included
-    or excluded with the database evidence setting. When curation filtering
-    is enabled, previously curated statements are hidden so the list
-    emphasizes novel or unresolved findings.
+    Evidence from database sources such as {s} can be included or excluded
+    using the database evidence option.
     """
 
 
@@ -272,10 +270,8 @@ def _explore_mesh_helper(
         description=f"""\
             The topic explorer identifies INDRA Statements in publications
             annotated with the given Medical Subject Headings (MeSH) term
-            using INDRA CoGEx. Evidence from structured database sources can
-            be included or excluded with the database evidence setting. When
-            curation filtering is enabled, previously curated statements are
-            hidden so the list emphasizes novel or unresolved findings.
+            using INDRA CoGEx. Evidence from database sources can be included
+            or excluded using the database evidence option.
             {EVIDENCE_TEXT}
         """,
         include_db_evidence=include_db_evidence
@@ -415,11 +411,8 @@ def goa():
         description=f"""\
             The Gene Ontology annotation explorer identifies INDRA statements
             using INDRA CoGEx whose subjects are human genes/proteins and whose
-            objects are Gene Ontology terms. Evidence from structured database
-            sources can be included or excluded with the database evidence
-            setting. When curation filtering is enabled, previously curated
-            statements are hidden so the list emphasizes novel or unresolved
-            findings.
+            objects are Gene Ontology terms. Evidence from database sources
+            can be included or excluded using the database evidence option.
             {EVIDENCE_TEXT}
         """,
         func_kwargs={'include_db_evidence': include_db_evidence},
@@ -555,8 +548,8 @@ def disprot(object_prefix: Optional[str] = None):
         description=f"""\
             The DisProt explorer identifies INDRA statements using INDRA
             CoGEx whose subjects are intrinsically disordered proteins.
-            Evidence from structured database sources can be included or
-            excluded with the database evidence setting.
+            Evidence from database sources can be included or excluded using
+            the database evidence option.
             {EVIDENCE_TEXT}
         """,
         func_kwargs=dict(object_prefix=object_prefix, include_db_evidence=include_db_evidence),
