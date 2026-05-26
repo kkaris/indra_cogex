@@ -220,18 +220,16 @@ def get_goa_source_counts(
     minimum_evidences: int = 10,
     include_db_evidence: bool = True,
 ) -> Mapping[int, Mapping[str, int]]:
-    """Get prioritized statement hashes for uncurated gene-GO annotations..
+    """Get prioritized statement hashes for uncurated gene-GO annotations.
 
     Parameters
     ----------
-    include_db_evidence :
-       If True, include statements with database evidence. If False, exclude them
     client :
        The Neo4j client
-   minimum_evidences :
+    minimum_evidences :
        Minimum number of evidences required for a statement to be included,
        by default 10
-   include_db_evidence :
+    include_db_evidence :
        If True, include statements with database evidence. If False, exclude them,
        by default True
 
@@ -243,8 +241,7 @@ def get_goa_source_counts(
     query = f"""\
         MATCH (a:BioEntity)-[r:indra_rel]->(b:BioEntity)
         WHERE
-            NOT (a)-[:associated_with]->(b)
-            AND a.id STARTS WITH 'hgnc'
+            a.id STARTS WITH 'hgnc'
             AND b.id STARTS WITH 'go'
             AND r.evidence_count > {minimum_evidences}
             {"" if include_db_evidence else "AND NOT r.has_database_evidence"}

@@ -54,10 +54,8 @@ such that entries appearing earlier should be easier to explore.
 
 def _database_text(s: str) -> str:
     return f"""\
-    INDRA statements already
-    appearing in high-quality reference databases like {s}
-    and statements that have already been curated are filtered out such
-    that only novel, potentially interesting statements are displayed.
+    Evidence from database sources such as {s} can be included or excluded
+    using the database evidence option.
     """
 
 
@@ -272,10 +270,9 @@ def _explore_mesh_helper(
         description=f"""\
             The topic explorer identifies INDRA Statements in publications
             annotated with the given Medical Subject Headings (MeSH) term
-            using INDRA CoGEx. INDRA statements already appearing in
-            high-quality reference databases and statements that have already
-            been curated are filtered out such that only novel, potentially
-            interesting statements are displayed. {EVIDENCE_TEXT}
+            using INDRA CoGEx. Evidence from database sources can be included
+            or excluded using the database evidence option.
+            {EVIDENCE_TEXT}
         """,
         include_db_evidence=include_db_evidence
     )
@@ -412,12 +409,10 @@ def goa():
         get_goa_source_counts,
         title="GO Annotation Explorer",
         description=f"""\
-            The Gene Ontology annotation explorer identifiers INDRA statements
+            The Gene Ontology annotation explorer identifies INDRA statements
             using INDRA CoGEx whose subjects are human genes/proteins and whose
-            objects are Gene Ontology terms. Statements whose gene-GO term pair
-            already appear in the Gene Ontology Annotation database and statements
-            that have already been curated are filtered out such that only novel,
-            potentially interesting statements are displayed. 
+            objects are Gene Ontology terms. Evidence from database sources
+            can be included or excluded using the database evidence option.
             {EVIDENCE_TEXT}
         """,
         func_kwargs={'include_db_evidence': include_db_evidence},
@@ -549,10 +544,12 @@ def disprot(object_prefix: Optional[str] = None):
     assert object_prefix in {None, "hgnc", "go", "chebi"}
     return _render_func(
         get_disprot_statements,
-        title="DisProt Explorer",
+        title="Disordered protein interaction explorer",
         description=f"""\
-            The DisProt explorer identifies INDRA statements using INDRA
-            CoGEx whose subjects are intrensically disordered proteins.
+            The Disordered protein explorer identifies INDRA statements using INDRA
+            CoGEx whose subjects are intrinsically disordered proteins.
+            Evidence from database sources can be included or excluded using
+            the database evidence option.
             {EVIDENCE_TEXT}
         """,
         func_kwargs=dict(object_prefix=object_prefix, include_db_evidence=include_db_evidence),
