@@ -544,7 +544,7 @@ def disprot(object_prefix: Optional[str] = None):
     assert object_prefix in {None, "hgnc", "go", "chebi"}
     return _render_func(
         get_disprot_statements,
-        title="Disorder Explorer",
+        title="Disordered protein interaction explorer",
         description=f"""\
             The Disordered protein explorer identifies INDRA statements using INDRA
             CoGEx whose subjects are intrinsically disordered proteins.
