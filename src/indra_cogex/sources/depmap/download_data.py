@@ -1,5 +1,6 @@
 import datetime
 import logging
+import os
 from functools import lru_cache
 
 import requests
@@ -67,7 +68,9 @@ MITOCARTA_NAME = "Human.MitoCarta3.0.xls"  # Rarely updates, see https://www.bro
 MODEL_INFO_NAME = "Model.csv"  # To get mapping from model name to CCLE Name
 CRISPR_NAME = "CRISPRGeneEffect.csv"  # CRISPr data
 RNAI_NAME = "D2_combined_gene_dep_scores.csv"  # RNAi data
-DEPMAP_RELEASE = get_latest_depmap().split()[-1].lower()  # e.g., "21q4"
+# Avoid contacting the DepMap API at import time. The latest release is still
+# resolved when download URLs are requested.
+DEPMAP_RELEASE = os.environ.get("DEPMAP_RELEASE", "latest")
 DEPMAP_RELEASE_MODULE = SUBMODULE.module(DEPMAP_RELEASE)
 
 
