@@ -448,59 +448,6 @@ def indra_upstream_ora(
     )
 
 
-@autoclient(cache=True)
-def count_phosphosites(*, client: Neo4jClient) -> int:
-    """Count the number of unique phosphosites in the Neo4j database.
-
-    A phosphosite is defined as a unique combination of target protein,
-    residue, and position. This function counts distinct phosphosites
-    rather than all phosphorylation statements.
-
-    Parameters
-    ----------
-    client :
-        Neo4jClient
-
-    Returns
-    -------
-    :
-        Number of unique phosphosites
-    """
-    # Query to get all target, residue, position combinations
-    query = """\
-        MATCH (s:BioEntity)-[r:indra_rel]->(t:BioEntity) 
-        WHERE r.stmt_type = 'Phosphorylation' 
-          AND r.stmt_json CONTAINS '"residue"' 
-          AND r.stmt_json CONTAINS '"position"'
-        RETURN DISTINCT t.id as target_id, 
-                        r.stmt_json as json_string
-    """
-
-    results = client.query_tx(query)
-
-    # Process the results to extract unique phosphosites
-    unique_sites = set()
-    import json
-
-    for target_id, json_string in results:
-        try:
-            stmt_json = json.loads(json_string)
-            residue = stmt_json.get("residue")
-            position = stmt_json.get("position")
-            if residue and position:
-                unique_sites.add((target_id, residue, position))
-        except json.JSONDecodeError:
-            continue
-
-    count = len(unique_sites)
-
-    if count == 0:
-        # Fallback to a minimum value to avoid division by zero
-        return 1000  # Arbitrary non-zero value
-
-    return count
-
-
 def kinase_ora(
     client: Neo4jClient,
     phosphosite_ids: Iterable[Tuple[str, str]],  # List of (gene_curie, site) tuples
