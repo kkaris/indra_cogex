@@ -562,8 +562,6 @@ def kinase_ora(
         universe_source = "kinase_annotated_phosphosites"
 
     diagnostics = {
-        "parsed_phosphosite_count": len(phosphosite_ids),
-        "valid_unique_phosphosite_count": len(input_phosphosites),
         "used_in_enrichment_universe_count": len(query_for_ora),
         "known_kinase_annotated_overlap": len(known_overlap),
         "tested_kinases": len(kinase_to_phosphosites),
@@ -575,26 +573,15 @@ def kinase_ora(
         "background_phosphosite_count": len(bg_phosphosites) if bg_phosphosites else None,
     }
 
-    columns = [
-        'curie',
-        'name',
-        'p',
-        'mlp',
-        'q',
-        'mlq',
-        'matched_phosphosites',
-        'statements',
-    ]
-
     if not kinase_to_phosphosites:
         logger.warning("No kinase-phosphosite relationships found, returning empty DataFrame")
-        empty_df = pd.DataFrame(columns=columns)
+        empty_df = pd.DataFrame()
         empty_df.attrs["diagnostics"] = diagnostics
         return empty_df
 
     if not known_overlap:
         logger.warning("No overlap between query phosphosites and known targets, returning empty DataFrame")
-        empty_df = pd.DataFrame(columns=columns)
+        empty_df = pd.DataFrame()
         empty_df.attrs["diagnostics"] = diagnostics
         return empty_df
 

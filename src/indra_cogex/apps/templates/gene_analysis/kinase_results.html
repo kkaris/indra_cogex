@@ -9,6 +9,23 @@
             href="https://cdn.datatables.net/v/bs4/jszip-3.10.1/dt-2.0.7/b-3.0.2/b-html5-3.0.2/datatables.min.css"
             rel="stylesheet"
     />
+    <style>
+        .phosphosite-list { position: relative; margin-bottom: 0.25rem; }
+        .phosphosite-list.collapsed { max-height: 10.8rem; overflow: hidden; }
+        .phosphosite-list.expanded { max-height: none; }
+        .phosphosite-list.collapsed:not(.expanded)::after {
+            background: linear-gradient(rgba(248, 249, 250, 0), #f8f9fa);
+            bottom: 0; content: ""; height: 1.6rem; left: 0; pointer-events: none; position: absolute; right: 0;
+        }
+        .phosphosite-toggle { color: #343a40; font-size: 1rem; margin-bottom: 1rem; padding: 0; }
+        .phosphosite-toggle:hover { color: #0056b3; text-decoration: none; }
+        .phosphosite-toggle::before {
+            border-color: currentColor transparent transparent;
+            border-style: solid; content: ""; display: inline-block; margin-right: 0.35rem; vertical-align: 0.12rem;
+            border-width: 0.35rem 0.25rem 0 0.25rem;
+        }
+        .phosphosite-toggle.expanded::before { transform: rotate(180deg); }
+    </style>
 {% endblock %}
 
 {% block scripts %}
@@ -42,6 +59,12 @@
         };
         $(document).ready(function () {
             $("#table-kinase").DataTable(datatablesConf);
+            $(".phosphosite-toggle").on("click", function () {
+                const button = $(this);
+                const expanded = $("#" + button.data("target")).toggleClass("expanded").hasClass("expanded");
+                button.toggleClass("expanded", expanded);
+                button.text(expanded ? "Show less" : button.data("collapsedText"));
+            });
         });
     </script>
 {% endblock %}
@@ -50,21 +73,19 @@
     <h3>{{ title }}</h3>
     {% set site_list = sites|list %}
     {% set site_count = site_list|length %}
-    {% set preview_count = 60 %}
-    <p class="mb-1">
-        {% for phosphosite in site_list[:preview_count] %}
+    {% set list_id = title|lower|replace(" ", "-") %}
+    <div class="phosphosite-list{% if site_count > 60 %} collapsed{% endif %}" id="{{ list_id }}">
+        {% for phosphosite in site_list %}
             <span class="badge {{ badge_class }}">{{ phosphosite }}</span>
         {% endfor %}
-    </p>
-    {% if site_count > preview_count %}
-        <details class="mb-3">
-            <summary>Show remaining {{ site_count - preview_count }} phosphosites</summary>
-            <p class="mt-1">
-                {% for phosphosite in site_list[preview_count:] %}
-                    <span class="badge {{ badge_class }}">{{ phosphosite }}</span>
-                {% endfor %}
-            </p>
-        </details>
+    </div>
+    {% if site_count > 60 %}
+        <button type="button"
+                class="btn btn-link phosphosite-toggle"
+                data-target="{{ list_id }}"
+                data-collapsed-text="Show all {{ site_count }} phosphosites">
+            Show all {{ site_count }} phosphosites
+        </button>
     {% endif %}
 {% endmacro %}
 
