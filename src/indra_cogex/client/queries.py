@@ -3611,6 +3611,7 @@ def _get_polarity(stmt_type):
 def get_network(
     include_db_evidence: bool = True,
     stmt_hashes: Optional[List[int]] = None,
+    input_node_names: Optional[List[str]] = None,
     *,
     client: Neo4jClient,
 ) -> Dict:
@@ -3622,6 +3623,8 @@ def get_network(
         Whether to include database evidence information.
     stmt_hashes :
         Statement hashes to use instead of reading them from the session.
+    input_node_names :
+        Input node names to use instead of reading them from the session.
     client : Neo4jClient
         The Neo4j client.
 
@@ -3633,7 +3636,11 @@ def get_network(
     try:
         # Get session data
         statement_hashes = stmt_hashes or session.get("statement_hashes")
-        input_node_names = session.get("subnetwork_input_nodes")
+        input_node_names = (
+            input_node_names
+            if input_node_names is not None
+            else session.get("subnetwork_input_nodes")
+        )
 
         if not statement_hashes:
             return {"nodes": [], "edges": [], "error": "No statement hashes found in session"}

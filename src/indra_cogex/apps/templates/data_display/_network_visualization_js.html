@@ -170,6 +170,12 @@ function initializeNetwork(prefix, identifier) {
             console.log(`No app.include_db_evidence found for ${prefix}, defaulting to true`);
         }
         payload.stmt_hashes = {{ network_stmt_hashes|default([])|tojson }};
+        if (prefix === 'subnetwork') {
+            const inputNodeNames = {{ network_input_node_names|default([])|tojson }};
+            if (inputNodeNames.length > 0) {
+                payload.input_node_names = inputNodeNames;
+            }
+        }
     }
 
     console.log("Final payload:", payload);
