@@ -11,7 +11,8 @@
     />
     <style>
         .phosphosite-list { position: relative; margin-bottom: 0.25rem; }
-        .phosphosite-list.collapsed { max-height: 10.8rem; overflow: hidden; }
+        .phosphosite-list.collapsed { max-height: 6.6rem; overflow: hidden; }
+        .phosphosite-list.compact.collapsed:not(.expanded) { max-height: 2.2rem; }
         .phosphosite-list.expanded { max-height: none; }
         .phosphosite-list.collapsed:not(.expanded)::after {
             background: linear-gradient(rgba(248, 249, 250, 0), #f8f9fa);
@@ -25,6 +26,8 @@
             border-width: 0.35rem 0.25rem 0 0.25rem;
         }
         .phosphosite-toggle.expanded::before { transform: rotate(180deg); }
+        .phosphosite-subheading { font-size: 1.25rem; margin-top: 0.25rem; }
+        .badge-excluded { background-color: #ced4da; color: #343a40; }
     </style>
 {% endblock %}
 
@@ -69,17 +72,22 @@
     </script>
 {% endblock %}
 
-{% macro render_phosphosite_list(title, sites, badge_class) -%}
-    <h3>{{ title }}</h3>
+{% macro render_phosphosite_list(title, sites, badge_class, compact=False, is_subheading=False) -%}
+    {% if is_subheading %}
+        <h4 class="phosphosite-subheading">{{ title }}</h4>
+    {% else %}
+        <h3>{{ title }}</h3>
+    {% endif %}
     {% set site_list = sites|list %}
     {% set site_count = site_list|length %}
     {% set list_id = title|lower|replace(" ", "-") %}
-    <div class="phosphosite-list{% if site_count > 60 %} collapsed{% endif %}" id="{{ list_id }}">
+    {% set collapse_after = 12 if compact else 60 %}
+    <div class="phosphosite-list{% if compact %} compact{% endif %}{% if site_count > collapse_after %} collapsed{% endif %}" id="{{ list_id }}">
         {% for phosphosite in site_list %}
             <span class="badge {{ badge_class }}">{{ phosphosite }}</span>
         {% endfor %}
     </div>
-    {% if site_count > 60 %}
+    {% if site_count > collapse_after %}
         <button type="button"
                 class="btn btn-link phosphosite-toggle"
                 data-target="{{ list_id }}"
@@ -131,6 +139,13 @@
         <h1 class="display-3">Kinase Enrichment Analysis</h1>
         <div>
             {{ render_phosphosite_list("Phosphosite Query", phosphosites, "badge-info") }}
+            {% set excluded_phosphosites = diagnostics.get("excluded_non_kinase_annotated_phosphosites", []) if diagnostics else [] %}
+            {% if excluded_phosphosites %}
+                <p class="mb-1">
+                    <i>These submitted phosphosites were not used in the Fisher test because they do not have kinase annotations.</i>
+                </p>
+                {{ render_phosphosite_list("Excluded Phosphosites", excluded_phosphosites, "badge-excluded", True, True) }}
+            {% endif %}
 
             <h3>Analysis Approach</h3>
             {% if background_phosphosites %}

@@ -511,6 +511,9 @@ def kinase_ora(
     diagnostics = {
         "used_in_enrichment_universe_count": len(query_for_ora),
         "known_kinase_annotated_overlap": len(known_overlap),
+        "excluded_non_kinase_annotated_phosphosites": sorted(
+            f"{gene}-{site}" for gene, site in (input_phosphosites - all_known_phosphosites)
+        ),
         "tested_kinases": len(kinase_to_phosphosites),
         "significant_kinases": 0,
         "alpha": alpha,
