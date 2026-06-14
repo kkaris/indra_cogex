@@ -149,7 +149,7 @@ class KinaseAnalysisForm(FlaskForm):
     phosphosites = TextAreaField(
         "Phosphosites",
         description="Paste your list of phosphosites in the format 'GENE-SITE' (e.g., 'MAPK1-T202', 'AKT1-S473')"
-                    " or click here to use <a href=\"#\" onClick=\"examplePhosphosites()\">an example list</a>.",
+                    " or click here to use <a href=\"#\" onClick=\"examplePhosphosites(); return false;\">an example list</a>.",
         validators=[DataRequired()],
     )
     background_phosphosites = TextAreaField(
