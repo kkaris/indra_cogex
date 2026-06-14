@@ -72,11 +72,14 @@
     </script>
 {% endblock %}
 
-{% macro render_phosphosite_list(title, sites, badge_class, compact=False, is_subheading=False) -%}
+{% macro render_phosphosite_list(title, sites, badge_class, compact=False, is_subheading=False, description=None) -%}
     {% if is_subheading %}
         <h4 class="phosphosite-subheading">{{ title }}</h4>
     {% else %}
         <h3>{{ title }}</h3>
+    {% endif %}
+    {% if description %}
+        <p class="mb-1"><i>{{ description }}</i></p>
     {% endif %}
     {% set site_list = sites|list %}
     {% set site_count = site_list|length %}
@@ -138,23 +141,21 @@
     <div class="card card-body bg-light">
         <h1 class="display-3">Kinase Enrichment Analysis</h1>
         <div>
-            {{ render_phosphosite_list("Phosphosite query", phosphosites, "badge-info") }}
             {% set excluded_phosphosites = diagnostics.get("excluded_non_kinase_annotated_phosphosites", []) if diagnostics else [] %}
+            {% set included_phosphosites = phosphosites | reject("in", excluded_phosphosites) | list %}
+            {{ render_phosphosite_list("Phosphosite query", included_phosphosites, "badge-info") }}
             {% if excluded_phosphosites %}
-                <p class="mb-1">
-                    <i>These submitted phosphosites were not used in the Fisher test because they do not have kinase annotations.</i>
-                </p>
-                {{ render_phosphosite_list("Excluded Phosphosites", excluded_phosphosites, "badge-excluded", True, True) }}
+                {{ render_phosphosite_list("Excluded Phosphosites", excluded_phosphosites, "badge-excluded", True, True, "These submitted phosphosites were not used in the Fisher test because they do not have kinase annotations.") }}
             {% endif %}
 
             {% if background_phosphosites %}
-                <p>
+                <p class="mb-2">
                     <strong>Analysis approach.</strong>
                     This run uses your custom background as the enrichment universe. Submitted sites are
                     intersected with that background before testing enrichment.
                 </p>
             {% else %}
-                <p>
+                <p class="mb-2">
                     <strong>Analysis approach.</strong>
                     This run tests enrichment among kinase-annotated phosphosites only. Submitted sites
                     without kinase annotations are counted in the input summary but excluded from the
@@ -165,14 +166,14 @@
             {% if background_phosphosites %}
                {{ render_phosphosite_list("Background Phosphosites", background_phosphosites, "badge-secondary") }}
             {% else %}
-               <p>
+               <p class="mb-2">
                    <strong>Background.</strong>
                    <i>No custom background was provided. The enrichment background is the set of phosphosites with known kinase annotations.</i>
                </p>
             {% endif %}
 
             <div>
-                <p>
+                <p class="mb-2">
                     <strong>Kinase enrichment results.</strong>
                     These results identify kinases that are statistically enriched for the set of phosphosites.
                     The p-value represents the probability of the observed overlap between the query phosphosites
