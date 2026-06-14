@@ -147,14 +147,15 @@
                 {{ render_phosphosite_list("Excluded Phosphosites", excluded_phosphosites, "badge-excluded", True, True) }}
             {% endif %}
 
-            <h3>Analysis approach</h3>
             {% if background_phosphosites %}
                 <p>
+                    <strong>Analysis approach.</strong>
                     This run uses your custom background as the enrichment universe. Submitted sites are
                     intersected with that background before testing enrichment.
                 </p>
             {% else %}
                 <p>
+                    <strong>Analysis approach.</strong>
                     This run tests enrichment among kinase-annotated phosphosites only. Submitted sites
                     without kinase annotations are counted in the input summary but excluded from the
                     enrichment test.
@@ -164,15 +165,15 @@
             {% if background_phosphosites %}
                {{ render_phosphosite_list("Background Phosphosites", background_phosphosites, "badge-secondary") }}
             {% else %}
-               <h3>Background</h3>
                <p>
+                   <strong>Background.</strong>
                    <i>No custom background was provided. The enrichment background is the set of phosphosites with known kinase annotations.</i>
                </p>
             {% endif %}
 
-            <h3>Kinase enrichment results</h3>
             <div>
                 <p>
+                    <strong>Kinase enrichment results.</strong>
                     These results identify kinases that are statistically enriched for the set of phosphosites.
                     The p-value represents the probability of the observed overlap between the query phosphosites
                     and the kinase's known targets occurring by chance.
