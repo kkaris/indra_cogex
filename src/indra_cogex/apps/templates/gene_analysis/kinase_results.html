@@ -138,7 +138,7 @@
     <div class="card card-body bg-light">
         <h1 class="display-3">Kinase Enrichment Analysis</h1>
         <div>
-            {{ render_phosphosite_list("Phosphosite Query", phosphosites, "badge-info") }}
+            {{ render_phosphosite_list("Phosphosite query", phosphosites, "badge-info") }}
             {% set excluded_phosphosites = diagnostics.get("excluded_non_kinase_annotated_phosphosites", []) if diagnostics else [] %}
             {% if excluded_phosphosites %}
                 <p class="mb-1">
@@ -147,7 +147,7 @@
                 {{ render_phosphosite_list("Excluded Phosphosites", excluded_phosphosites, "badge-excluded", True, True) }}
             {% endif %}
 
-            <h3>Analysis Approach</h3>
+            <h3>Analysis approach</h3>
             {% if background_phosphosites %}
                 <p>
                     This run uses your custom background as the enrichment universe. Submitted sites are
@@ -157,7 +157,7 @@
                 <p>
                     This run tests enrichment among kinase-annotated phosphosites only. Submitted sites
                     without kinase annotations are counted in the input summary but excluded from the
-                    Fisher test.
+                    enrichment test.
                 </p>
             {% endif %}
 
@@ -170,10 +170,10 @@
                </p>
             {% endif %}
 
-            <h3>Kinase Enrichment Results</h3>
+            <h3>Kinase enrichment results</h3>
             <div>
                 <p>
-                    These results identify kinases that are statistically enriched in the set of phosphosites.
+                    These results identify kinases that are statistically enriched for the set of phosphosites.
                     The p-value represents the probability of the observed overlap between the query phosphosites
                     and the kinase's known targets occurring by chance.
                     Kinases with lower p-values are more likely to be involved in regulating the phosphorylation
@@ -181,7 +181,7 @@
                 </p>
                 {% if diagnostics %}
                     <div class="alert alert-secondary py-2">
-                        <strong>Run summary:</strong>
+                        <strong>Summary:</strong>
                         Parsed phosphosites: {{ diagnostics.get("parsed_phosphosite_count", phosphosites|length) }};
                         Valid unique phosphosites: {{ diagnostics.get("valid_unique_phosphosite_count", "n/a") }};
                         Used in enrichment universe: {{ diagnostics.get("used_in_enrichment_universe_count", "n/a") }};
