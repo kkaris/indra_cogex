@@ -101,7 +101,7 @@
     {% endif %}
 {% endmacro %}
 
-{% macro render_query_phosphosites(title, sites, invalid_sites, unannotated_sites) -%}
+{% macro render_query_phosphosites(title, annotated_sites, unannotated_sites, invalid_sites) -%}
     <h3>{{ title }}</h3>
     <p class="mb-1"><small class="text-muted">
         Badge colors show how each submitted site was used:
@@ -109,15 +109,13 @@
         <span class="badge badge-excluded">gray</span> valid but no kinase annotation (not testable),
         <span class="badge badge-invalid">orange</span> unrecognized or invalid site.
     </small></p>
-    {% set site_list = sites|list %}
-    {% set site_count = site_list|length %}
+    {% set site_count = (annotated_sites|length) + (unannotated_sites|length) + (invalid_sites|length) %}
     {% set list_id = title|lower|replace(" ", "-") %}
     {% set collapse_after = 60 %}
     <div class="phosphosite-list{% if site_count > collapse_after %} collapsed{% endif %}" id="{{ list_id }}">
-        {% for site in site_list %}
-            {% set cls = "badge-invalid" if site in invalid_sites else ("badge-excluded" if site in unannotated_sites else "badge-info") %}
-            <span class="badge {{ cls }}">{{ site }}</span>
-        {% endfor %}
+        {% for site in annotated_sites %}<span class="badge badge-info">{{ site }}</span>{% endfor %}
+        {% for site in unannotated_sites %}<span class="badge badge-excluded">{{ site }}</span>{% endfor %}
+        {% for site in invalid_sites %}<span class="badge badge-invalid">{{ site }}</span>{% endfor %}
     </div>
     {% if site_count > collapse_after %}
         <button type="button"
@@ -170,9 +168,10 @@
     <div class="card card-body bg-light">
         <h1 class="display-3">Kinase Enrichment Analysis</h1>
         <div>
+            {% set annotated_phosphosites = diagnostics.get("annotated_query_phosphosites", []) if diagnostics else [] %}
             {% set unannotated_phosphosites = diagnostics.get("excluded_non_kinase_annotated_phosphosites", []) if diagnostics else [] %}
             {% set invalid_phosphosites = diagnostics.get("invalid_phosphosites", []) if diagnostics else [] %}
-            {{ render_query_phosphosites("Phosphosite query", phosphosites, invalid_phosphosites, unannotated_phosphosites) }}
+            {{ render_query_phosphosites("Phosphosite query", annotated_phosphosites, unannotated_phosphosites, invalid_phosphosites) }}
 
             {% if background_phosphosites %}
                 <p class="mb-2">
