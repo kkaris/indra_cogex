@@ -487,19 +487,6 @@ def parse_gene_list(gene_list: List[str]) -> Tuple[Dict[str, str], List[str]]:
     return genes, errors
 
 
-def is_valid_gene(gene: str) -> bool:
-    """Check if the given identifier is a gene symbol or a UniProt ID."""
-    if not isinstance(gene, str) or len(gene) == 0:
-        return False
-
-    if is_uniprot_id(gene):
-        return True
-
-    # Gene symbols (allow alphanumeric/hyphen but must start with a letter)
-    gene_pattern = re.compile(r"^[A-Za-z][A-Za-z0-9-]*$")
-    return bool(gene_pattern.match(gene))
-
-
 def is_uniprot_id(identifier: str) -> bool:
     """Check if an identifier looks like a UniProt accession."""
     if not isinstance(identifier, str):
@@ -545,9 +532,9 @@ def parse_phosphosite_list(
             else identifier
         )
 
-        if is_valid_gene(gene) and is_valid_phosphosite(site):
+        if gene and hgnc_client.get_hgnc_id(gene) and is_valid_phosphosite(site):
             phosphosites.append((gene, site))
         else:
-            errors.append(f"{identifier}:{site}")
+            errors.append(f"{identifier}-{site}")
 
     return phosphosites, errors

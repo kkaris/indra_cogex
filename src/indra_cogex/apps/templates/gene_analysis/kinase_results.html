@@ -28,6 +28,7 @@
         .phosphosite-toggle.expanded::before { transform: rotate(180deg); }
         .phosphosite-subheading { font-size: 1.25rem; margin-top: 0.25rem; }
         .badge-excluded { background-color: #ced4da; color: #343a40; }
+        .badge-invalid { background-color: #f6c6a0; color: #7a3d00; }
     </style>
 {% endblock %}
 
@@ -100,6 +101,34 @@
     {% endif %}
 {% endmacro %}
 
+{% macro render_query_phosphosites(title, sites, invalid_sites, unannotated_sites) -%}
+    <h3>{{ title }}</h3>
+    <p class="mb-1"><small class="text-muted">
+        Badge colors show how each submitted site was used:
+        <span class="badge badge-info">blue</span> tested (valid with a kinase annotation),
+        <span class="badge badge-excluded">gray</span> valid but no kinase annotation (not testable),
+        <span class="badge badge-invalid">orange</span> unrecognized or invalid site.
+    </small></p>
+    {% set site_list = sites|list %}
+    {% set site_count = site_list|length %}
+    {% set list_id = title|lower|replace(" ", "-") %}
+    {% set collapse_after = 60 %}
+    <div class="phosphosite-list{% if site_count > collapse_after %} collapsed{% endif %}" id="{{ list_id }}">
+        {% for site in site_list %}
+            {% set cls = "badge-invalid" if site in invalid_sites else ("badge-excluded" if site in unannotated_sites else "badge-info") %}
+            <span class="badge {{ cls }}">{{ site }}</span>
+        {% endfor %}
+    </div>
+    {% if site_count > collapse_after %}
+        <button type="button"
+                class="btn btn-link phosphosite-toggle"
+                data-target="{{ list_id }}"
+                data-collapsed-text="Show all {{ site_count }} phosphosites">
+            Show all {{ site_count }} phosphosites
+        </button>
+    {% endif %}
+{% endmacro %}
+
 {% macro render_kinase_table(df, table_id, phosphosites, minimum_evidence, minimum_belief) -%}
     <table class="table table-hover table-striped table-ora" id="{{ table_id }}" style="width: 100%;">
         <thead>
@@ -141,12 +170,9 @@
     <div class="card card-body bg-light">
         <h1 class="display-3">Kinase Enrichment Analysis</h1>
         <div>
-            {% set excluded_phosphosites = diagnostics.get("excluded_non_kinase_annotated_phosphosites", []) if diagnostics else [] %}
-            {% set included_phosphosites = phosphosites | reject("in", excluded_phosphosites) | list %}
-            {{ render_phosphosite_list("Phosphosite query", included_phosphosites, "badge-info") }}
-            {% if excluded_phosphosites %}
-                {{ render_phosphosite_list("Excluded Phosphosites", excluded_phosphosites, "badge-excluded", True, True, "These submitted phosphosites were not used in the Fisher test because they do not have kinase annotations.") }}
-            {% endif %}
+            {% set unannotated_phosphosites = diagnostics.get("excluded_non_kinase_annotated_phosphosites", []) if diagnostics else [] %}
+            {% set invalid_phosphosites = diagnostics.get("invalid_phosphosites", []) if diagnostics else [] %}
+            {{ render_query_phosphosites("Phosphosite query", phosphosites, invalid_phosphosites, unannotated_phosphosites) }}
 
             {% if background_phosphosites %}
                 <p class="mb-2">
