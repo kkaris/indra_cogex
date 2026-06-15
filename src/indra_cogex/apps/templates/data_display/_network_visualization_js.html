@@ -169,6 +169,13 @@ function initializeNetwork(prefix, identifier) {
             payload.include_db_evidence = true;
             console.log(`No app.include_db_evidence found for ${prefix}, defaulting to true`);
         }
+        payload.stmt_hashes = {{ network_stmt_hashes|default([])|tojson }};
+        if (prefix === 'subnetwork') {
+            const inputNodeNames = {{ network_input_node_names|default([])|tojson }};
+            if (inputNodeNames.length > 0) {
+                payload.input_node_names = inputNodeNames;
+            }
+        }
     }
 
     console.log("Final payload:", payload);
@@ -301,6 +308,13 @@ function initializeNetwork(prefix, identifier) {
         // Variable to store dialog element
         let detailsDialog = null;
 
+        function positionDialogNearCanvasPoint(dialog, canvasPoint, offsetX, offsetY) {
+            const domPos = network.canvasToDOM(canvasPoint);
+            const containerRect = container.getBoundingClientRect();
+            dialog.style.left = `${containerRect.left + window.scrollX + domPos.x + offsetX}px`;
+            dialog.style.top = `${containerRect.top + window.scrollY + domPos.y + offsetY}px`;
+        }
+
         // Handle clicks on nodes or edges
         network.on("click", function(params) {
             try {
@@ -427,11 +441,7 @@ function initializeNetwork(prefix, identifier) {
 
             // Position dialog near clicked node
             const pos = network.getPositions([nodeId])[nodeId];
-            const domPos = network.canvasToDOM(pos);
-
-            // Position dialog
-            detailsDialog.style.left = `${domPos.x + 30}px`;
-            detailsDialog.style.top = `${domPos.y - 30}px`;
+            positionDialogNearCanvasPoint(detailsDialog, pos, 30, -30);
 
             // Add to DOM
             document.body.appendChild(detailsDialog);
@@ -544,13 +554,7 @@ function initializeNetwork(prefix, identifier) {
             // Get middle point of edge
             const x = (fromPos.x + toPos.x) / 2;
             const y = (fromPos.y + toPos.y) / 2;
-
-            // Convert to DOM coordinates
-            const domPos = network.canvasToDOM({x: x, y: y});
-
-            // Position dialog
-            detailsDialog.style.left = `${domPos.x + 20}px`;
-            detailsDialog.style.top = `${domPos.y + 20}px`;
+            positionDialogNearCanvasPoint(detailsDialog, {x: x, y: y}, 20, 20);
 
             // Add to DOM
             document.body.appendChild(detailsDialog);

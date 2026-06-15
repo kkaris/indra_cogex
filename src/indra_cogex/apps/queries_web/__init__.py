@@ -398,6 +398,10 @@ examples_dict = {
         "default": fields.List(fields.String,
                                example=["12198579805553967", "30651649296901235"])
     },
+    "input_node_names": fields.List(
+        fields.String,
+        example=["5Z-7-oxozeaenol", "MAP3K7", "TRAF6", "IL1B", "IL1R1"],
+    ),
     "rel_type": fields.String(example="Phosphorylation"),
     "rel_types": fields.List(fields.String, example=["Phosphorylation", "Activation"]),
     "agent_name": fields.String(example="MEK"),

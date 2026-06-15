@@ -131,6 +131,7 @@ def _enrich_render_statements(
     prefix: Optional[str] = None,
     store_hashes_in_session: bool = False,
     identifier: Optional[str] = None,
+    network_input_node_names: Optional[List[str]] = None,
 ) -> Response:
     if curations is None:
         curations = curation_cache.get_curation_cache()
@@ -170,7 +171,8 @@ def _enrich_render_statements(
         include_db_evidence=include_db_evidence,
         prefix=prefix,
         store_hashes_in_session=store_hashes_in_session,
-        identifier=identifier
+        identifier=identifier,
+        network_input_node_names=network_input_node_names,
         # no limit necessary here since it was already applied above
     )
 
@@ -880,7 +882,8 @@ def subnetwork():
             source_counts=source_counts,
             store_hashes_in_session=True,
             prefix="subnetwork",
-            identifier=','.join(f"{ns}:{id}" for ns, id in nodes)
+            identifier=','.join(f"{ns}:{id}" for ns, id in nodes),
+            network_input_node_names=list(top_genes),
         )
 
     # No nodes provided - render form
