@@ -199,6 +199,18 @@ def collect_genes_with_confidence(
     return curie_to_hgnc_ids
 
 
+def _phosphosite_in_background(
+    phosphosite: Tuple[str, str, str],
+    background_phosphosites: Set[Tuple[str, str]],
+) -> bool:
+    """Match raw (substrate_id, substrate_name, site) to user (gene, site)."""
+    substrate_id, substrate_name, site = phosphosite
+    return (
+        (substrate_name, site) in background_phosphosites
+        or (substrate_id, site) in background_phosphosites
+    )
+
+
 def collect_phosphosites_with_confidence(
     client: Neo4jClient,
     query: str,
@@ -322,13 +334,14 @@ def collect_phosphosites_with_confidence(
     if background_phosphosites:
         filtered_res = {}
         for key in list(res.keys()):
-            filtered_set = {
-                phosphosite for phosphosite in res[key]
-                if phosphosite in background_phosphosites
+            filtered_dict = {
+                phosphosite: confidence
+                for phosphosite, confidence in res[key].items()
+                if _phosphosite_in_background(phosphosite, background_phosphosites)
             }
 
-            if filtered_set:
-                filtered_res[key] = filtered_set
+            if filtered_dict:
+                filtered_res[key] = filtered_dict
             else:
                 continue
 
@@ -473,17 +486,21 @@ def get_sqlite_genes_with_confidence_cache(
     gene_sets = {}
     if len(rows) == 0:
         raise ValueError(f"No entries found in cache for {cache_name}")
+    background_gene_ids = set(background_gene_ids or [])
     # Loop through the rows and build the dictionary, applying background filtering
     # if necessary
     for curie, name, gene_id, belief, evidence_count in rows:
         # For kinase_phosphosites, we need to split on '|'
         if '|' in gene_id:
-            check_id = gene_id.split('|')[0]
             inner_key = tuple(gene_id.split('|'))
+            if len(inner_key) == 3 and background_gene_ids:
+                if not _phosphosite_in_background(inner_key, background_gene_ids):
+                    continue
+            elif background_gene_ids and inner_key[0] not in background_gene_ids:
+                continue
         else:
-            check_id = gene_id
             inner_key = gene_id
-        if background_gene_ids and check_id not in background_gene_ids:
+        if background_gene_ids and isinstance(inner_key, str) and inner_key not in background_gene_ids:
             continue
         gene_sets.setdefault((curie, name), {})[inner_key] = (belief, evidence_count)
     return gene_sets
@@ -679,36 +696,51 @@ def get_kinase_phosphosites_raw(
         tuples.
     """
     if sqlite_db_path.exists() and use_sqlite_cache:
-        res = get_sqlite_genes_with_confidence_cache(
-            "kinase_phosphosites",
-            background_gene_ids=background_phosphosites,
-            sqlite_db_path=sqlite_db_path,
-            limit=limit
-        )
-    else:
-        query = dedent(
-            f"""\
-            MATCH (kinase:BioEntity)-[r:indra_rel]->(substrate:BioEntity)
-            WHERE
-                r.stmt_type = 'Phosphorylation'
-                AND substrate.id STARTS WITH "hgnc"
-                AND NOT substrate.obsolete
-            RETURN
-                kinase.id,
-                kinase.name,
-                collect(
-                    [substrate.id, substrate.name, r.belief, r.evidence_count, r.stmt_json]
-                )
-            """
-        )
-        if limit is not None:
-            query += f"\nLIMIT {limit}"
-        res = collect_phosphosites_with_confidence(
-            client=client,
-            query=query,
-            background_phosphosites=background_phosphosites,
+        try:
+            return get_sqlite_genes_with_confidence_cache(
+                "kinase_phosphosites",
+                background_gene_ids=background_phosphosites,
+                sqlite_db_path=sqlite_db_path,
+                limit=limit
+            )
+        except ValueError as err:
+            logger.warning(
+                "SQLite cache %s is missing kinase_phosphosites entries; "
+                "falling back to Neo4j. Build it with: "
+                "python -m indra_cogex.client.enrichment.utils --force-refresh",
+                sqlite_db_path,
+            )
+            logger.debug("Kinase phosphosite cache lookup failed: %s", err)
+    elif use_sqlite_cache:
+        logger.warning(
+            "SQLite cache %s does not exist; falling back to Neo4j for "
+            "kinase phosphosites. Build it with: python -m "
+            "indra_cogex.client.enrichment.utils --force-refresh",
+            sqlite_db_path,
         )
 
+    query = dedent(
+        f"""\
+        MATCH (kinase:BioEntity)-[r:indra_rel]->(substrate:BioEntity)
+        WHERE
+            r.stmt_type = 'Phosphorylation'
+            AND substrate.id STARTS WITH "hgnc"
+            AND NOT substrate.obsolete
+        RETURN
+            kinase.id,
+            kinase.name,
+            collect(
+                [substrate.id, substrate.name, r.belief, r.evidence_count, r.stmt_json]
+            )
+        """
+    )
+    if limit is not None:
+        query += f"\nLIMIT {limit}"
+    res = collect_phosphosites_with_confidence(
+        client=client,
+        query=query,
+        background_phosphosites=background_phosphosites,
+    )
     return res
 
 

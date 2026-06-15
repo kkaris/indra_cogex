@@ -9,6 +9,27 @@
             href="https://cdn.datatables.net/v/bs4/jszip-3.10.1/dt-2.0.7/b-3.0.2/b-html5-3.0.2/datatables.min.css"
             rel="stylesheet"
     />
+    <style>
+        .phosphosite-list { position: relative; margin-bottom: 0.25rem; }
+        .phosphosite-list.collapsed { max-height: 6.6rem; overflow: hidden; }
+        .phosphosite-list.compact.collapsed:not(.expanded) { max-height: 2.2rem; }
+        .phosphosite-list.expanded { max-height: none; }
+        .phosphosite-list.collapsed:not(.expanded)::after {
+            background: linear-gradient(rgba(248, 249, 250, 0), #f8f9fa);
+            bottom: 0; content: ""; height: 1.6rem; left: 0; pointer-events: none; position: absolute; right: 0;
+        }
+        .phosphosite-toggle { color: #343a40; font-size: 1rem; margin-bottom: 1rem; padding: 0; }
+        .phosphosite-toggle:hover { color: #0056b3; text-decoration: none; }
+        .phosphosite-toggle::before {
+            border-color: currentColor transparent transparent;
+            border-style: solid; content: ""; display: inline-block; margin-right: 0.35rem; vertical-align: 0.12rem;
+            border-width: 0.35rem 0.25rem 0 0.25rem;
+        }
+        .phosphosite-toggle.expanded::before { transform: rotate(180deg); }
+        .phosphosite-subheading { font-size: 1.25rem; margin-top: 0.25rem; }
+        .badge-excluded { background-color: #ced4da; color: #343a40; }
+        .badge-invalid { background-color: #f6c6a0; color: #7a3d00; }
+    </style>
 {% endblock %}
 
 {% block scripts %}
@@ -42,9 +63,69 @@
         };
         $(document).ready(function () {
             $("#table-kinase").DataTable(datatablesConf);
+            $(".phosphosite-toggle").on("click", function () {
+                const button = $(this);
+                const expanded = $("#" + button.data("target")).toggleClass("expanded").hasClass("expanded");
+                button.toggleClass("expanded", expanded);
+                button.text(expanded ? "Show less" : button.data("collapsedText"));
+            });
         });
     </script>
 {% endblock %}
+
+{% macro render_phosphosite_list(title, sites, badge_class, compact=False, is_subheading=False, description=None) -%}
+    {% if is_subheading %}
+        <h4 class="phosphosite-subheading">{{ title }}</h4>
+    {% else %}
+        <h3>{{ title }}</h3>
+    {% endif %}
+    {% if description %}
+        <p class="mb-1"><i>{{ description }}</i></p>
+    {% endif %}
+    {% set site_list = sites|list %}
+    {% set site_count = site_list|length %}
+    {% set list_id = title|lower|replace(" ", "-") %}
+    {% set collapse_after = 12 if compact else 60 %}
+    <div class="phosphosite-list{% if compact %} compact{% endif %}{% if site_count > collapse_after %} collapsed{% endif %}" id="{{ list_id }}">
+        {% for phosphosite in site_list %}
+            <span class="badge {{ badge_class }}">{{ phosphosite }}</span>
+        {% endfor %}
+    </div>
+    {% if site_count > collapse_after %}
+        <button type="button"
+                class="btn btn-link phosphosite-toggle"
+                data-target="{{ list_id }}"
+                data-collapsed-text="Show all {{ site_count }} phosphosites">
+            Show all {{ site_count }} phosphosites
+        </button>
+    {% endif %}
+{% endmacro %}
+
+{% macro render_query_phosphosites(title, annotated_sites, unannotated_sites, invalid_sites) -%}
+    <h3>{{ title }}</h3>
+    <p class="mb-1"><small class="text-muted">
+        Badge colors show how each submitted site was used:
+        <span class="badge badge-info">blue</span> tested (valid with a kinase annotation),
+        <span class="badge badge-excluded">gray</span> valid but no kinase annotation (not testable),
+        <span class="badge badge-invalid">orange</span> unrecognized or invalid site.
+    </small></p>
+    {% set site_count = (annotated_sites|length) + (unannotated_sites|length) + (invalid_sites|length) %}
+    {% set list_id = title|lower|replace(" ", "-") %}
+    {% set collapse_after = 60 %}
+    <div class="phosphosite-list{% if site_count > collapse_after %} collapsed{% endif %}" id="{{ list_id }}">
+        {% for site in annotated_sites %}<span class="badge badge-info">{{ site }}</span>{% endfor %}
+        {% for site in unannotated_sites %}<span class="badge badge-excluded">{{ site }}</span>{% endfor %}
+        {% for site in invalid_sites %}<span class="badge badge-invalid">{{ site }}</span>{% endfor %}
+    </div>
+    {% if site_count > collapse_after %}
+        <button type="button"
+                class="btn btn-link phosphosite-toggle"
+                data-target="{{ list_id }}"
+                data-collapsed-text="Show all {{ site_count }} phosphosites">
+            Show all {{ site_count }} phosphosites
+        </button>
+    {% endif %}
+{% endmacro %}
 
 {% macro render_kinase_table(df, table_id, phosphosites, minimum_evidence, minimum_belief) -%}
     <table class="table table-hover table-striped table-ora" id="{{ table_id }}" style="width: 100%;">
@@ -58,9 +139,13 @@
         </tr>
         </thead>
         <tbody>
-        {% for curie, name, p, mlp, q, mlq, statements in df.values %}
+        {% for curie, name, p, mlp, q, mlq, matched_phosphosites, statements in df.values %}
             <tr class="clickable-row"
                 data-statements='{{ statements | tojson }}'
+                data-statements-url="{{ url_for('search.search_kinase_statement_metadata',
+                                                kinase_id=curie,
+                                                minimum_evidence=minimum_evidence,
+                                                minimum_belief=minimum_belief) }}{% for site in matched_phosphosites %}&phosphosites={{ site | urlencode }}{% endfor %}"
                 data-regulator-name="{{ name | e }}">
                 <td><a href="https://bioregistry.io/{{ curie }}" target="_blank">{{ curie }}</a></td>
                 <td>{{ name }}</td>
@@ -70,7 +155,7 @@
                     <a href="{{ url_for('search.search_kinase_statements',
                                         kinase_id=curie,
                                         minimum_evidence=minimum_evidence,
-                                        minimum_belief=minimum_belief) }}{% for site in phosphosites %}&phosphosites={{ site }}{% endfor %}"
+                                        minimum_belief=minimum_belief) }}{% for site in matched_phosphosites %}&phosphosites={{ site | urlencode }}{% endfor %}"
                         target="_blank"
                         class="btn btn-primary btn-sm">View Statements</a>
                 </td>
@@ -83,36 +168,61 @@
     <div class="card card-body bg-light">
         <h1 class="display-3">Kinase Enrichment Analysis</h1>
         <div>
-            <h3>Phosphosite Query</h3>
-            <p>
-                {% for phosphosite in phosphosites %}
-                    <span class="badge badge-info">{{ phosphosite }}</span>
-                {% endfor %}
-            </p>
+            {% set annotated_phosphosites = diagnostics.get("annotated_query_phosphosites", []) if diagnostics else [] %}
+            {% set unannotated_phosphosites = diagnostics.get("excluded_non_kinase_annotated_phosphosites", []) if diagnostics else [] %}
+            {% set invalid_phosphosites = diagnostics.get("invalid_phosphosites", []) if diagnostics else [] %}
+            {{ render_query_phosphosites("Phosphosite query", annotated_phosphosites, unannotated_phosphosites, invalid_phosphosites) }}
 
             {% if background_phosphosites %}
-               <h3>Background Phosphosites</h3>
-               <p>
-                   {% for phosphosite in background_phosphosites %}
-                       <span class="badge badge-secondary">{{ phosphosite }}</span>
-                   {% endfor %}
-               </p>
+                <p class="mb-2">
+                    <strong>Analysis approach.</strong>
+                    This run uses your custom background as the enrichment universe. Submitted sites are
+                    intersected with that background before testing enrichment.
+                </p>
             {% else %}
-               <h3>Background</h3>
-               <p>
-                   <i>All phosphosites in the database were used as background.</i>
+                <p class="mb-2">
+                    <strong>Analysis approach.</strong>
+                    This run tests enrichment among kinase-annotated phosphosites only. Submitted sites
+                    without kinase annotations are counted in the input summary but excluded from the
+                    enrichment test.
+                </p>
+            {% endif %}
+
+            {% if background_phosphosites %}
+               {{ render_phosphosite_list("Background Phosphosites", background_phosphosites, "badge-secondary") }}
+            {% else %}
+               <p class="mb-2">
+                   <strong>Background.</strong>
+                   <i>No custom background was provided. The enrichment background is the set of phosphosites with known kinase annotations.</i>
                </p>
             {% endif %}
 
-            <h3>Kinase Enrichment Results</h3>
             <div>
-                <p>
-                    These results identify kinases that are statistically enriched in the set of phosphosites.
+                <p class="mb-2">
+                    <strong>Kinase enrichment results.</strong>
+                    These results identify kinases that are statistically enriched for the set of phosphosites.
                     The p-value represents the probability of the observed overlap between the query phosphosites
                     and the kinase's known targets occurring by chance.
                     Kinases with lower p-values are more likely to be involved in regulating the phosphorylation
                     patterns in your dataset.
                 </p>
+                {% if diagnostics %}
+                    <div class="alert alert-secondary py-2">
+                        <strong>Summary:</strong>
+                        Parsed phosphosites: {{ diagnostics.get("parsed_phosphosite_count", phosphosites|length) }};
+                        Valid unique phosphosites: {{ diagnostics.get("valid_unique_phosphosite_count", "n/a") }};
+                        Used in enrichment universe: {{ diagnostics.get("used_in_enrichment_universe_count", "n/a") }};
+                        Known kinase-annotated overlap: {{ diagnostics.get("known_kinase_annotated_overlap", "n/a") }};
+                        Tested kinases: {{ diagnostics.get("tested_kinases", "n/a") }};
+                        Significant kinases at FDR &lt; {{ diagnostics.get("alpha", alpha) }}:
+                        {{ diagnostics.get("significant_kinases", "n/a") }}.
+                    </div>
+                {% endif %}
+                {% if results.empty %}
+                    <div class="alert alert-info">
+                        The run completed, but no kinase passed FDR &lt; {{ diagnostics.get("alpha", alpha) if diagnostics else alpha }}.
+                    </div>
+                {% endif %}
                 {{ render_kinase_table(results, "table-kinase", phosphosites, minimum_evidence, minimum_belief) }}
             </div>
         </div>
