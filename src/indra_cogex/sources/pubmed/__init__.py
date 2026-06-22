@@ -15,16 +15,11 @@ import gzip
 import json
 import logging
 import os
-import re
 from abc import abstractmethod
-from hashlib import md5
-from itertools import chain
 from typing import Tuple, Mapping, Iterable, List, Set
 
 from pathlib import Path
 
-import requests
-from bs4 import BeautifulSoup
 from lxml import etree
 from tqdm.std import tqdm
 from indra.util import batch_iter
@@ -304,30 +299,6 @@ class JournalProcessor(PubmedProcessor):
                 yield relations_batch
 
 
-def get_url_paths(url: str) -> Iterable[str]:
-    """Get the paths to all XML files on the PubMed FTP server."""
-    logger.info("Getting URL paths from %s" % url)
-
-    # Get page
-    response = requests.get(url)
-    response.raise_for_status()
-
-    # Make soup
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    # Append trailing slash if not present
-    url = url if url.endswith("/") else url + "/"
-
-    # Loop over all links
-    for link in soup.find_all("a"):
-        href = link.get("href")
-        # yield if href matches
-        # 'pubmed<2 digit year>n<4 digit file index>.xml.gz'
-        # but skip the md5 files
-        if href and href.startswith("pubmed") and href.endswith(".xml.gz"):
-            yield url + href
-
-
 def ensure_text_refs(fname):
     if os.path.exists(fname):
         logger.info(f"Found existing text refs in {fname}")
@@ -398,6 +369,8 @@ def process_mesh_xml_to_csv(
     pmid_year_types_fpath: Path = pmid_year_types_path,
     pmid_nlm_fpath: Path = pmid_nlm_path,
     journal_info_fpath: Path = journal_info_path,  # For Journal Node creation
+    raise_http_error: bool = True,
+    raise_checksum_error: bool = True,
     force: bool = False
 ):
     """Process the pubmed xml and dump to different CSV files
@@ -414,13 +387,15 @@ def process_mesh_xml_to_csv(
         Path to the pmid journal file
     journal_info_fpath :
         Path to the journal info file, used to create the Journal Nodes
+    raise_http_error :
+        If True, will raise error instead of skipping the XML file when
+        downloading. Default: True.
+    raise_checksum_error :
+        If True, will raise error instead of skipping the XML file when
+        checksums do not match. Default: True.
     force :
         If True, re-run the download even if the file already exists.
     """
-    # Todo: Some of the pipeline could be replaced with
-    #  raw_xml.ensure(url=xml_gz_url) though this makes the md5 check
-    #  cumbersome.
-
     if not force and mesh_pmid_fpath.exists() and pmid_year_types_fpath.exists() and \
             pmid_nlm_fpath.exists() and journal_info_fpath.exists():
         logger.info(
@@ -431,7 +406,12 @@ def process_mesh_xml_to_csv(
         return
 
     # Check resource files and download missing ones first
-    download_medline_pubmed_xml_resource(force=force)
+    pubmed_client.ensure_xml_files(
+        raw_xml.base.as_posix(),
+        raise_http_error=raise_http_error,
+        raise_checksum_error=raise_checksum_error,
+        force=force,
+    )
 
     # Loop the stowed xml files
     logger.info("Processing PubMed XML files")
@@ -462,7 +442,11 @@ def process_mesh_xml_to_csv(
         used_nlm_ids = set()
         yielded_pmid_nlm_links = set()
         yielded_issn_nlm_links = set()
-        for _, xml_path, _ in xml_path_generator(description="XML to CSV"):
+        for xml_path in tqdm(
+            list(raw_xml.glob("*.xml.gz")),
+            description="Processing XML",
+            unit="file",
+        ):
             for (
                     pmid, year, mesh_annotations, journal_info, publication_types
             ) in extract_info_from_medline_xml(xml_path.as_posix()):
@@ -555,102 +539,3 @@ def process_mesh_xml_to_csv(
                         ]
                     )
                     used_nlm_ids.add(journal_info["journal_nlm_id"])
-
-
-def download_medline_pubmed_xml_resource(
-    force: bool = False,
-    raise_http_error: bool = False,
-    raise_checksum_error: bool = False,
-) -> None:
-    """Downloads the medline and pubmed data from the NCBI ftp site.
-
-    The location of the downloaded data is determined by pystow
-
-    Parameters
-    ----------
-    force :
-        If True, will download a file even if it already exists.
-    raise_http_error :
-        If True, will raise error instead of skipping the file when
-        downloading. Default: False.
-    raise_checksum_error :
-        If True, will raise error instead of skipping the file when
-        checksums do not match. Default: False.
-    """
-    for xml_file, stow, base_url in xml_path_generator(description="Downloading PubMed XML files"):
-        # Check if resource already exists
-        if not force and stow.exists():
-            continue
-
-        # Download the resource
-        response = requests.get(base_url + xml_file)
-        if response.status_code != 200:
-            if raise_http_error:
-                response.raise_for_status()
-            else:
-                logger.warning(
-                    f"Skipping {xml_file} due to HTTP status {response.status_code}"
-                )
-                continue
-
-        md5_response = requests.get(base_url + xml_file + ".md5")
-        actual_checksum = md5(response.content).hexdigest()
-        expected_checksum = re.search(
-            r"[0-9a-z]+(?=\n)", md5_response.content.decode("utf-8")
-        ).group()
-        if actual_checksum != expected_checksum:
-            err_msg = f"Checksum does not match for {xml_file}. Download timeout?"
-            if raise_checksum_error:
-                raise ValueError(err_msg)
-            logger.warning(err_msg)
-            # todo: better handling of bad downloads, don't use the file?
-            continue
-
-        # PyStow the file
-        with stow.open("wb") as f:
-            f.write(response.content)
-
-
-def xml_path_generator(
-    bar: bool = True, description: str = "Looping xml paths"
-) -> Iterable[Tuple[str, Path, str]]:
-    """Returns a generator of (xml_file, xml_path, base_url) tuples.
-
-    Parameters
-    ----------
-    bar :
-        If True, will display a progress bar.
-    description :
-        Description of the progress bar.
-
-    Yields
-    ------
-    :
-        Tuple of (xml_file, xml_path, xml_url).
-    """
-
-    def _get_tuple(url: str) -> Tuple[str, Path, str]:
-        file = url.split("/")[-1]
-        stow = raw_xml.join(name=file)
-
-        # Get the base url
-        base_url = url.replace(file, "")
-        return file, stow, base_url
-
-    baseline_urls = get_url_paths(pubmed_base_url)
-    update_urls = get_url_paths(pubmed_update_url)
-
-    if bar:
-        baseline_urls = [u for u in baseline_urls]
-        update_urls = [u for u in update_urls]
-        all_urls = baseline_urls + update_urls
-        for pubmed_url in tqdm(
-            all_urls,
-            unit="file",
-            unit_scale=True,
-            desc=description,
-        ):
-            yield _get_tuple(pubmed_url)
-    else:
-        for pubmed_url in chain(baseline_urls, update_urls):
-            yield _get_tuple(pubmed_url)
