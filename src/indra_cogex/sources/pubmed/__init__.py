@@ -411,6 +411,7 @@ def process_mesh_xml_to_csv(
         raise_http_error=raise_http_error,
         raise_checksum_error=raise_checksum_error,
         force=force,
+        max_workers=4,
     )
 
     # Loop the stowed xml files
