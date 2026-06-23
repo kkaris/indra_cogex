@@ -348,13 +348,14 @@ def extract_info_from_medline_xml(
         if year is None:
             logger.warning(f"Could not find year for PMID {pmid}")
 
-        medline_citation = article.find("MedlineCitation")
-        pmid = medline_citation.find("PMID").text
+        pmid = meta_data["pmid"]
 
+        medline_citation = article.find("MedlineCitation")
         journal_info = pubmed_client.get_issn_info(
             medline_citation, get_issns_from_nlm="missing"
         )
-        pub_tags = pubmed_client.get_publication_types(article)
+
+        pub_tags = meta_data["publication_types"]
         yield (
             pmid,
             year,
