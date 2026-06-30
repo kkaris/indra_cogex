@@ -369,14 +369,26 @@ def process_mesh_xml_to_csv(
     mesh_pmid_fpath: Path = mesh_pmid_path,
     pmid_year_types_fpath: Path = pmid_year_types_path,
     pmid_nlm_fpath: Path = pmid_nlm_path,
-    journal_info_fpath: Path = journal_info_path,  # For Journal Node creation
+    journal_info_fpath: Path = journal_info_path,
+    issn_nlm_map_fpath: Path = issn_nlm_map_path,
     raise_http_error: bool = True,
     raise_checksum_error: bool = True,
     force: bool = False
 ):
     """Process the pubmed xml and dump to different CSV files
 
-    Dump to CSV file with the columns: mesh_id,is_concept,major_topic,pmid
+    Dumps the following files:
+        - mesh_pmid_fpath - gzipped CSV file with columns:
+          mesh_id, major_topic, pmid
+        - pmid_year_types_fpath - gzipped TSV file with columns:
+          pmid, year, publication_types
+        - pmid_nlm_fpath - gzipped CSV file with columns:
+          pmid, journal_nlm_id
+        - journal_info_fpath - gzipped TSV file with columns:
+          journal_nlm_id, journal_name, journal_abbrev, issn, issn_l, p_issn,
+          e_issn, other
+        - issn_nlm_map_fpath - gzipped CSV file with columns:
+          issn, nlm_id
 
     Parameters
     ----------
@@ -388,14 +400,19 @@ def process_mesh_xml_to_csv(
         Path to the pmid journal file
     journal_info_fpath :
         Path to the journal info file, used to create the Journal Nodes
+    issn_nlm_map_fpath :
+        Path to the issn to nlm mapping file, used to create Journal Nodes and
+        Journal-Publisher relations in the JournalPublisherProcessor in the
+        wikidata source module.
     raise_http_error :
         If True, will raise error instead of skipping the XML file when
-        downloading. Default: True.
+        downloading and the request to download a file fails. Default: True.
     raise_checksum_error :
         If True, will raise error instead of skipping the XML file when
         checksums do not match. Default: True.
     force :
-        If True, re-run the download even if the file already exists.
+        If True, re-run the download even if the files already exists. Default:
+        False.
     """
     if not force and mesh_pmid_fpath.exists() and pmid_year_types_fpath.exists() and \
             pmid_nlm_fpath.exists() and journal_info_fpath.exists():
@@ -421,7 +438,7 @@ def process_mesh_xml_to_csv(
             gzip.open(pmid_year_types_fpath, "wt") as fh_year_types, \
             gzip.open(pmid_nlm_fpath, "wt") as fh_journal, \
             gzip.open(journal_info_fpath, "wt") as fh_journal_info, \
-            gzip.open(issn_nlm_map_path, "wt") as fh_issn_nlm_map:
+            gzip.open(issn_nlm_map_fpath, "wt") as fh_issn_nlm_map:
 
         # Get the CSV writers
         writer_mesh = csv.writer(fh_mesh, delimiter=",")
