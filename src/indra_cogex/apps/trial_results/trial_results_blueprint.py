@@ -239,8 +239,8 @@ trial_results_blueprint = flask.Blueprint(
 
 
 _TRIAL_ROW_TAIL = """\
-        OPTIONAL MATCH (ct)<-[:tested_in {ctgov: true}]-(drug:BioEntity)
-        OPTIONAL MATCH (ct)<-[:has_trial {ctgov: true}]-(disease:BioEntity)
+        OPTIONAL MATCH (ct)-[:has_intervention {ctgov: true}]->(drug:BioEntity)
+        OPTIONAL MATCH (ct)-[:has_condition {ctgov: true}]->(disease:BioEntity)
         WITH r, p, ct, hp,
              [x IN collect(DISTINCT {name: drug.name, id: drug.id}) WHERE x.id IS NOT NULL] AS drugs,
              [x IN collect(DISTINCT {name: disease.name, id: disease.id}) WHERE x.id IS NOT NULL] AS diseases
@@ -254,8 +254,7 @@ _TRIAL_ROW_TAIL = """\
 
 def _gene_search(ns: str, gid: str, label: str):
     """Run a trial result search via a gene (HGNC)."""
-    rows = client.query_tx(
-        """\
+    rows = client.query_tx("""\
         MATCH (p:Publication)-[:has_trial_result]->(r:TrialResult)
         MATCH (r:TrialResult)-[:has_genetic_criterion]->(g:BioEntity {id: $gene_id})
         OPTIONAL MATCH (ct:ClinicalTrial)-[hp:has_publication]->(p)
@@ -270,7 +269,7 @@ def _gene_search(ns: str, gid: str, label: str):
 def _run_entity_search(entity_id: str, label: str):
     """Run a trial result search via both conditions and interventions"""
     rows = client.query_tx("""\
-        MATCH (ct:ClinicalTrial)<-[:tested_in|has_trial]-(e:BioEntity {id: $entity_id})
+        MATCH (ct:ClinicalTrial)-[:has_condition|has_intervention]->(e:BioEntity {id: $entity_id})
         MATCH (ct)-[hp:has_publication]->(p:Publication)
         MATCH (p)-[:has_trial_result]->(r:TrialResult)
         WHERE p.year IS NULL OR ct.start_year IS NULL OR ct.start_year <= p.year
