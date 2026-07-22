@@ -56,6 +56,7 @@ edge_labels = {
     "has_statistical_comparison": "Trial Arm Comparisons",
     "has_genetic_criterion": "Trial Genetic Eligibility",
     "has_trial_source": "Trial Source",
+    "codependent_with": "Gene knockout correlations",
 }
 
 INDRA_COGEX_WEB_LOCAL = (get_config("INDRA_COGEX_WEB_LOCAL") or "").lower() in {
