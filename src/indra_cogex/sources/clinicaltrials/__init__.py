@@ -218,8 +218,8 @@ class ClinicalTrialResultProcessor(Processor):
         "Publication",
     ]
 
-    def __init__(self):
-        data = load_all()
+    def __init__(self, look_up_current_max_ids: bool = False):
+        data = load_all(look_up_current_max_ids=look_up_current_max_ids)
         self.result_nodes_df = data["result_nodes"]
         self.arms_df = data["arms"]
         self.metrics_df = data["metrics"]
