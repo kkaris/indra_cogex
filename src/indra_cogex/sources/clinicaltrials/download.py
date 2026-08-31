@@ -393,7 +393,10 @@ def process_trialsynth_trial_nodes() -> pd.DataFrame:
     return trials_nodes_df
 
 
-def _load_jsons(json_dir: Path = RESULTS_GROUNDED_DIR.base) -> List[Tuple[int, str, dict]]:
+def _load_jsons(
+    json_dir: Path = RESULTS_GROUNDED_DIR.base,
+    index_start: int = 1,
+) -> List[Tuple[int, str, dict]]:
     """Load all grounded JSON files, returning (result_id, pmid, data) tuples.
 
     Parameters
@@ -407,7 +410,7 @@ def _load_jsons(json_dir: Path = RESULTS_GROUNDED_DIR.base) -> List[Tuple[int, s
         List of (result_id, pmid, data) tuples, one per JSON file.
     """
     records = []
-    for result_id, path in enumerate(sorted(json_dir.glob("*.json")), start=1):
+    for result_id, path in enumerate(sorted(json_dir.glob("*.json")), start=index_start):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             pmid = str(data.get("pmid", path.stem))
@@ -418,13 +421,20 @@ def _load_jsons(json_dir: Path = RESULTS_GROUNDED_DIR.base) -> List[Tuple[int, s
     return records
 
 
-def load_all(json_dir: Path = RESULTS_GROUNDED_DIR.base) -> Dict[str, pd.DataFrame]:
+def load_all(
+    json_dir: Path = RESULTS_GROUNDED_DIR.base,
+    look_up_current_max_ids: bool = False,
+) -> Dict[str, pd.DataFrame]:
     """Load all grounded JSONs in a single pass and return all DataFrames.
 
     Parameters
     ----------
     json_dir :
         Path to the directory containing grounded JSON files.
+    look_up_current_max_ids :
+        If True, look up the current max IDs in the database and use them to
+        set the IDs for the nodes. This is useful for loading data into a
+        database that already has some nodes. Default: False.
 
     Returns
     -------
@@ -444,14 +454,42 @@ def load_all(json_dir: Path = RESULTS_GROUNDED_DIR.base) -> Dict[str, pd.DataFra
     ae_bioentity_edges = []
     publication_edges = []
 
-    arm_id = 1
-    metric_id = 1
-    ae_id = 1
-    criterion_id = 1
-    outcome_id = 1
-    stat_id = 1
+    if look_up_current_max_ids:
+        from indra_cogex.client import Neo4jClient
+        node_match_query_template = """\
+        MATCH (n:{node_label})
+        RETURN max(toInteger(split(n.id, ':')[-1])) AS max_id"""
+        labels = [
+            ("TrialArm", "arm_id"),
+            ("TrialAdverseEvent", "ae_id"),
+            ("TrialCriterion", "criterion_id"),
+            ("TrialMetric", "metric_id"),
+            ("TrialOutcome", "outcome_id"),
+            ("TrialResult", "result_id"),
+            ("TrialStatisticalComparison", "stat_id"),
+        ]
+        # Look up the current max IDs for each node type in the database
+        client = Neo4jClient()
+        index_map = {}
+        for label, id_name in labels:
+            query = node_match_query_template.format(node_label=label)
+            rows = client.query_tx(query)
+            max_id = int(rows[0][0]) if rows else 0
+            index_map[id_name] = max_id + 1
+    else:
+        index_map = {
+            "arm_id": 1,
+            "ae_id": 1,
+            "criterion_id": 1,
+            "metric_id": 1,
+            "outcome_id": 1,
+            "result_id": 1,
+            "stat_id": 1,
+        }
 
-    for result_id, pmid, data in _load_jsons(json_dir):
+    for result_id, pmid, data in _load_jsons(
+        json_dir, index_start=index_map["result_id"]
+    ):
         result_nodes.append({
             "result_id": result_id,
             "study_info": _clean(data.get("study_info", "")),
@@ -464,7 +502,7 @@ def load_all(json_dir: Path = RESULTS_GROUNDED_DIR.base) -> Dict[str, pd.DataFra
         for arm in data.get("arms", []):
             arms.append({
                 "result_id": result_id,
-                "arm_id": arm_id,
+                "arm_id": index_map["arm_id"],
                 "arm_name": _clean(arm.get("arm_name", "")),
                 "n": arm.get("n"),
                 "dosage": _clean(arm.get("dosage") or ""),
@@ -473,19 +511,19 @@ def load_all(json_dir: Path = RESULTS_GROUNDED_DIR.base) -> Dict[str, pd.DataFra
             for m in arm.get("metrics", []):
                 metrics.append({
                     "parent_ns": "arm",
-                    "parent_id": arm_id,
-                    "metric_id": metric_id,
+                    "parent_id": index_map["arm_id"],
+                    "metric_id": index_map["metric_id"],
                     "name": _clean(m.get("name", "")),
                     "value_numeric": m.get("value_numeric"),
                     "unit": _clean(m.get("unit", "")),
                     "value_text": _clean(m.get("value_text", "")),
                     "source_sentence": _clean(m.get("source_sentence", "")),
                 })
-                metric_id += 1
+                index_map["metric_id"] += 1
             for ae in arm.get("adverse_events", []):
                 adverse_events.append({
-                    "arm_id": arm_id,
-                    "adverseevent_id": ae_id,
+                    "arm_id": index_map["arm_id"],
+                    "adverseevent_id": index_map["ae_id"],
                     "event_name": _clean(ae.get("event_name", "")),
                     "incidence_numeric": ae.get("incidence_numeric"),
                     "unit": _clean(ae.get("unit", "")),
@@ -495,61 +533,61 @@ def load_all(json_dir: Path = RESULTS_GROUNDED_DIR.base) -> Dict[str, pd.DataFra
                 grounding = ae.get("grounding") or {}
                 if grounding.get("db") and grounding.get("id"):
                     ae_bioentity_edges.append({
-                        "adverseevent_id": ae_id,
+                        "adverseevent_id": index_map["ae_id"],
                         "db": grounding["db"],
                         "id": grounding["id"],
                     })
-                ae_id += 1
-            arm_id += 1
+                index_map["ae_id"] += 1
+            index_map["arm_id"] += 1
 
         for item in data.get("inclusion_criteria", []):
             criteria.append({
                 "result_id": result_id,
-                "criterion_id": criterion_id,
+                "criterion_id": index_map["criterion_id"],
                 "text": _clean(item.get("text", "")),
                 "criterion_type": "inclusion",
                 "evidence_text": _clean(item.get("evidence_text", "")),
             })
-            criterion_id += 1
+            index_map["criterion_id"] += 1
 
         for item in data.get("exclusion_criteria", []):
             criteria.append({
                 "result_id": result_id,
-                "criterion_id": criterion_id,
+                "criterion_id": index_map["criterion_id"],
                 "text": _clean(item.get("text", "")),
                 "criterion_type": "exclusion",
                 "evidence_text": _clean(item.get("evidence_text", "")),
             })
-            criterion_id += 1
+            index_map["criterion_id"] += 1
 
         for item in data.get("results", []):
             outcomes.append({
                 "result_id": result_id,
-                "outcome_id": outcome_id,
+                "outcome_id": index_map["outcome_id"],
                 "text": _clean(item.get("text", "")),
                 "evidence_text": _clean(item.get("evidence_text", "")),
             })
-            outcome_id += 1
+            index_map["outcome_id"] += 1
 
         for comp in data.get("statistical_comparisons", []):
             stat_comparisons.append({
                 "result_id": result_id,
-                "statcomparison_id": stat_id,
+                "statcomparison_id": index_map["stat_id"],
                 "comparison_name": _clean(comp.get("comparison_name", "")),
             })
             for m in comp.get("metrics", []):
                 metrics.append({
                     "parent_ns": "statcomparison",
-                    "parent_id": stat_id,
-                    "metric_id": metric_id,
+                    "parent_id": index_map["stat_id"],
+                    "metric_id": index_map["metric_id"],
                     "name": _clean(m.get("name", "")),
                     "value_numeric": m.get("value_numeric"),
                     "unit": _clean(m.get("unit", "")),
                     "value_text": _clean(m.get("value_text", "")),
                     "source_sentence": _clean(m.get("source_sentence", "")),
                 })
-                metric_id += 1
-            stat_id += 1
+                index_map["metric_id"] += 1
+            index_map["stat_id"] += 1
 
         grounded = data.get("genetic", {}).get("grounded_inclusion", [])
         for entry in grounded:
