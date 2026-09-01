@@ -40,7 +40,7 @@
     "info": "Gene complex membership<br>Source: INDRA BioOntology"
   },
   {
-    "rel_type": "has_trial",
+    "rel_type": "has_condition",
     "label": "Disease Trials",
     "info": "Condition treated in clinical trial<br>Source: clinicaltrials.gov"
   },
@@ -60,7 +60,7 @@
     "info": "Drug side effects<br>Source: sideeffects.embl.de"
   },
   {
-    "rel_type": "tested_in",
+    "rel_type": "has_intervention",
     "label": "Drug Trials",
     "info": "Drug (and other interventions) tested in clinical trial<br>Source: clinicaltrials.gov"
   },
