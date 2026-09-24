@@ -13,6 +13,7 @@ import pandas as pd
 from indra.ontology.bio import bio_ontology
 from indra_cogex.client import process_identifier
 from indra_cogex.representation import dump_norm_id
+from indra_cogex.sources.clinicaltrials.grounders import ClinicalTrialsDrugGrounder
 from trialsynth.ctgov import config, process
 from trialsynth.base.extract.paths import RESULTS_GROUNDED_DIR
 
@@ -91,8 +92,12 @@ def ensure_clinical_trials_df(
         logger.info("ClinicalTrials.gov data already processed, skipping download.")
         return
 
+    drugbank_grounder = ClinicalTrialsDrugGrounder()
     ctp = process.CTProcessor(
-        reload_api_data=redownload, store_samples=True, validate=False
+        reload_api_data=redownload,
+        store_samples=True,
+        validate=False,
+        intervention_grounder=drugbank_grounder,
     )
     ctp.run(max_pages=max_pages)
 
