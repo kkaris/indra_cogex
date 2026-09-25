@@ -81,8 +81,14 @@ class Neo4jClient:
             auth=auth,
             max_connection_lifetime=3 * 60,
         )
-        self.driver.verify_connectivity()
-        logger.info("Connected to neo4j graph at %s", url)
+        try:
+            self.driver.verify_connectivity()
+            logger.info("Connected to neo4j graph at %s", url)
+        except Exception as err:
+            logger.error("Could not connect to neo4j graph at %s", url)
+            self.driver.close()
+            self.driver = None
+            raise err
 
     def __del__(self):
         # Safely shut down the driver as a Neo4jClient object is garbage collected
