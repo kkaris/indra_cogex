@@ -1,17 +1,12 @@
 """Chat page app for INDRA CoGEx"""
-import json
 import logging
 from pathlib import Path
 
 import flask
-from flask import request, url_for
 
 from indra_cogex.apps.constants import (
-    pusher_key,
-    pusher_app,
     LOCAL_VUE,
     STATIC_DIR,
-    pusher_cluster,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,40 +39,3 @@ if LOCAL_VUE:
 
 else:
     logger.info("Serving vue app from [not implemented]")
-
-
-# Return simple json with pusher app key
-@chat_blueprint.route("/pusher_info", methods=["GET"])
-def pusher_info():
-    return json.dumps(
-        {
-            "pusher_key": pusher_key or "",
-            "pusher_cluster": pusher_cluster or "",
-            "auth_endpoint": url_for(".pusher_authentication"),
-            "new_user_endpoint": url_for(".guestUser"),
-        }
-    )
-
-
-@chat_blueprint.route("/new/guest", methods=["POST"])
-def guestUser():
-    data = request.json
-
-    pusher_app.trigger(
-        u"general-channel",
-        u"new-guest-details",
-        {"name": data["name"], "email": data["email"]},
-    )
-
-    return json.dumps(data)
-
-
-@chat_blueprint.route("/pusher/auth", methods=["POST"])
-def pusher_authentication():
-    if pusher_app is None:
-        return json.dumps({"error": "Pusher app not configured."})
-
-    auth = pusher_app.authenticate(
-        channel=request.form["channel_name"], socket_id=request.form["socket_id"]
-    )
-    return json.dumps(auth)
