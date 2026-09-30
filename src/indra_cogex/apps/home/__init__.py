@@ -3,7 +3,7 @@ from typing import Counter, Tuple
 
 from flask import Blueprint, current_app, render_template
 
-from indra_cogex.apps.constants import edge_count_info, node_count_info, pusher_key
+from indra_cogex.apps.constants import edge_count_info, node_count_info
 from indra_cogex.apps.proxies import client
 
 from ...client.queries import get_curated_edge_counter, get_node_counter
@@ -56,5 +56,4 @@ def home():
         edge_specs_sorted=edge_specs_sorted,
         node_count_info=node_count_info,
         blueprints=current_app.blueprints,
-        pusher_app_key=pusher_key,
     )
