@@ -8,11 +8,6 @@ import pystow
 from indra.util.statement_presentation import db_sources, reader_sources
 from indra.config import get_config
 
-try:
-    from pusher import pusher
-except ImportError:
-    pusher = None
-
 
 logger = logging.getLogger(__name__)
 
@@ -103,29 +98,6 @@ else:
     else:
         VUE_SRC_JS = f"{VUE_URL_ROOT}/{VUE_JS}"
         VUE_SRC_CSS = f"{VUE_URL_ROOT}/{VUE_CSS}"
-
-# Pusher parameters
-pusher_app_id = get_config("CLARE_PUSHER_APP_ID")
-pusher_key = get_config("CLARE_PUSHER_KEY")
-pusher_secret = get_config("CLARE_PUSHER_SECRET")
-pusher_cluster = get_config("CLARE_PUSHER_CLUSTER")
-
-# Pusher app
-if pusher is not None and pusher_app_id and pusher_key and pusher_secret and pusher_cluster:
-    pusher_app = pusher.Pusher(
-        app_id=pusher_app_id,
-        key=pusher_key,
-        secret=pusher_secret,
-        cluster=pusher_cluster,
-        ssl=True,
-    )
-else:
-    logger.warning(
-        "Pusher app not configured. Please set the environment variables "
-        "CLARE_PUSHER_APP_ID, CLARE_PUSHER_KEY, CLARE_PUSHER_SECRET, "
-        "and CLARE_PUSHER_CLUSTER."
-    )
-    pusher_app = None
 
 PYOBO_RESOURCE_FILE_VERSIONS = {
     "mgi": "6.23",
