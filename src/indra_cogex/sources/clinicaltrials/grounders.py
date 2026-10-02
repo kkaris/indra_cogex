@@ -20,6 +20,7 @@ ANNOTATE_STOPLIST = {
 }
 MESH_PREFIX = "MESH"
 DRUG_NAMESPACES = ["DRUGBANK", "CHEBI", "MESH"]  # Todo: expand?
+FALLBACK_NAMESPACES = ["CHEBI", "MESH"]
 SKIP_INTERVENTIONS = set()  # Todo: fill out after first try
 
 _drugbank_grounder = None
@@ -96,6 +97,21 @@ def get_drug_grounder():
     return grounder
 
 
+def _filter_annotations(annotations):
+    """Apply the length, stoplist, and score filters to a list of annotations."""
+    filtered_annotations = []
+    for annotation in annotations:
+        matched_text = annotation.text.strip()
+        if len(matched_text) < ANNOTATE_MIN_LEN:
+            continue
+        if matched_text.upper() in ANNOTATE_STOPLIST:
+            continue
+        if annotation.matches[0].score < ANNOTATE_MIN_SCORE:
+            continue
+        filtered_annotations.append(annotation)
+    return filtered_annotations
+
+
 class ClinicalTrialsDrugAnnotator(Annotator):
     """Annotator for drug interventions in clinical trials."""
 
@@ -110,20 +126,20 @@ class ClinicalTrialsDrugAnnotator(Annotator):
             namespaces=self.namespaces,
             context_text=context,
         )
+        filtered_annotations = _filter_annotations(annotations)
+        if filtered_annotations:
+            return filtered_annotations
 
-        # Filter out annotations
-        filtered_annotations = []
-        for annotation in annotations:
-            matched_text = annotation.text.strip()
-            if len(matched_text) < ANNOTATE_MIN_LEN:
-                continue
-            if matched_text.upper() in ANNOTATE_STOPLIST:
-                continue
-            if annotation.matches[0].score < ANNOTATE_MIN_SCORE:
-                continue
-            filtered_annotations.append(annotation)
-
-        return filtered_annotations
+        # The drugbank_grounder only ever contains DrugBank terms, so if
+        # nothing matched there, fall back to Gilda's real default grounder
+        # for CHEBI/MESH coverage.
+        fallback_annotations = gilda_annotate(
+            text,
+            grounder=gilda.get_grounder(),
+            namespaces=FALLBACK_NAMESPACES,
+            context_text=context,
+        )
+        return _filter_annotations(fallback_annotations)
 
 
 class ClinicalTrialsDrugGrounder(InterventionGrounder):
@@ -148,6 +164,14 @@ class ClinicalTrialsDrugGrounder(InterventionGrounder):
         if namespaces is None:
             namespaces = self.namespaces
         matches = self.drugbank_grounder.ground(text, context=context, namespaces=namespaces)
+
+        if not matches:
+            # self.drugbank_grounder only ever contains DrugBank terms, so if
+            # nothing matched there, fall back to Gilda's real default
+            # grounder for CHEBI/MESH coverage.
+            matches = gilda.get_grounder().ground(
+                text, context=context, namespaces=FALLBACK_NAMESPACES
+            )
 
         # Filter matches
         if matches and matches[0].term.get_curie() in SKIP_INTERVENTIONS:
