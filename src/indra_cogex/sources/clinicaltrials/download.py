@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Tuple
 import pystow
 import pandas as pd
 
+from indra.databases import drugbank_client
 from indra.ontology.bio import bio_ontology
 from indra_cogex.client import process_identifier
 from indra_cogex.representation import dump_norm_id
@@ -103,10 +104,10 @@ def ensure_clinical_trials_df(
 
 
 def _mesh_to_chebi(row) -> str:
-    """Convert a MeSH CURIE to a ChEBI CURIE if possible for interventions"""
+    """Convert a MeSH CURIE to a DrugBank or ChEBI CURIE if possible for interventions"""
     # Some interventions in the trialsynth data are directly from mesh
-    # annotations and don't go through grounding, where chebi is prioritized
-    # over mesh
+    # annotations and don't go through grounding, where drugbank and chebi
+    # are prioritized over mesh
     curie = row["bioentity"]
     if curie is None:
         raise ValueError(
@@ -118,12 +119,22 @@ def _mesh_to_chebi(row) -> str:
         return curie
 
     # At this point we know that the CURIE is a MeSH CURIE and we want to
-    # convert it to a ChEBI CURIE if possible.
+    # upgrade it to a DrugBank CURIE if possible, falling back to ChEBI.
     # The bio_ontology has chebi nodes stored as ("CHEBI", "CHEBI:12345")
+    mesh_id = curie.split(":")[1]
     chebi_ns, chebi_id = bio_ontology.map_to(
-        ns1="MESH", id1=curie.split(":")[1], ns2="CHEBI"
+        ns1="MESH", id1=mesh_id, ns2="CHEBI"
     ) or (None, None)
-    # The bio_ontology has chebi nodes stored as ("CHEBI", "CHEBI:12345")
+
+    # There is no direct MeSH-to-DrugBank cross-reference in the bio_ontology,
+    # so this has to go through CHEBI as an intermediate step: MESH -> CHEBI
+    # -> DRUGBANK, using the same DrugBank-to-CHEBI mapping data the drug
+    # grounder itself is built from.
+    if chebi_id:
+        drugbank_id = drugbank_client.get_drugbank_id_from_chebi_id(chebi_id)
+        if drugbank_id:
+            return f"DRUGBANK:{drugbank_id}"
+
     return chebi_id if chebi_id else curie
 
 
