@@ -201,11 +201,6 @@
     "info": "Genetic biomarker in clinical trial<br>Source: clinicaltrials.gov"
   },
   {
-    "rel_type": "has_trial_source",
-    "label": "Trial Source",
-    "info": "Clinical trial linked as the source of a trial result<br>Source: clinicaltrials.gov"
-  },
-  {
     "rel_type": "codependent_with",
     "label": "Gene Knockout Correlations",
     "info": "Gene-gene correlations in knockout experiments<br>Source: depmap.org"
