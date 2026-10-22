@@ -8,9 +8,14 @@ from indra.ontology.bio import bio_ontology
 from indra_cogex.apps.proxies import client
 from indra_cogex.representation import norm_id
 from indra_cogex.client.queries import (
-    get_full_trial_result,
+    get_arms_for_trial_result,
+    get_criteria_for_trial_result,
+    get_genes_for_trial_result,
     get_metrics_for_arm,
     get_metrics_for_statistical_comparison,
+    get_outcomes_for_trial_result,
+    get_statistical_comparisons_for_trial_result,
+    get_trial_result_for_pmid,
     get_drugs_for_trial,
     get_diseases_for_trial,
 )
@@ -221,16 +226,24 @@ def _format_search_results(rows):
     return results
 
 
-_processed_papers = None
+_processed_counts = None
 
 
-def _get_processed_count() -> int:
-    """Return the number of TrialResult nodes in the graph, cached after first query."""
-    global _processed_papers
-    if _processed_papers is None:
-        rows = client.query_tx("MATCH (r:TrialResult) RETURN count(r) AS n")
-        _processed_papers = rows[0][0] if rows else 0
-    return _processed_papers
+def _get_processed_count() -> dict:
+    """Return TrialResult counts by source (publication vs. registry), cached."""
+    global _processed_counts
+    if _processed_counts is None:
+        rows = client.query_tx(
+            "MATCH (s)-[:has_trial_result]->(r:TrialResult) "
+            "WHERE s:Publication OR s:ClinicalTrial "
+            "RETURN s:Publication AS is_pub, count(DISTINCT r) AS n"
+        )
+        counts = {is_pub: n for is_pub, n in rows}
+        _processed_counts = {
+            "publications": counts.get(True, 0),
+            "registry": counts.get(False, 0),
+        }
+    return _processed_counts
 
 
 trial_results_blueprint = flask.Blueprint(
@@ -350,50 +363,74 @@ def search():
     )
 
 
-@trial_results_blueprint.route("/result/<pmid>")
-def result(pmid):
-    """Display the full trial result for a given PMID."""
-    data = get_full_trial_result(pmid, client=client)
-    if not data:
-        return redirect(url_for("trial_results.search", error=pmid))
+def _load_result_sections(result_node, with_findings=True):
+    """Load arms, findings and criteria hanging off one TrialResult node.
 
-    result_node = data["result"]
+    Registry (ClinicalTrials.gov) extractions carry no metrics, adverse events,
+    comparisons or outcomes, so ``with_findings=False`` skips those queries.
+    """
     trial_result_tuple = (result_node.db_ns, result_node.db_id)
+    result_id = f"{result_node.db_ns.lower()}:{result_node.db_id}"
 
     arms_data = []
-    for arm in data["arms"]:
-        arm_tuple = (arm.db_ns, arm.db_id)
-        arm_id = f"{arm.db_ns.lower()}:{arm.db_id}"
-        arm_metrics = list(
-            get_metrics_for_arm(trial_result_tuple, arm=arm_tuple, client=client)
-        )
-        arm_aes = list(client.query_nodes(
-            "MATCH (a:TrialArm {id: $arm_id})"
-            "-[:has_adverse_event]->(ae:TrialAdverseEvent) RETURN ae",
-            arm_id=arm_id,
-        ))
-        arms_data.append({
-            "arm": arm,
-            "metrics": arm_metrics,
-            "adverse_events": arm_aes,
-        })
+    for arm in get_arms_for_trial_result(trial_result_tuple, client=client):
+        entry = {"arm": arm, "metrics": [], "adverse_events": []}
+        if with_findings:
+            arm_tuple = (arm.db_ns, arm.db_id)
+            arm_id = f"{arm.db_ns.lower()}:{arm.db_id}"
+            entry["metrics"] = list(
+                get_metrics_for_arm(trial_result_tuple, arm=arm_tuple, client=client)
+            )
+            entry["adverse_events"] = list(client.query_nodes(
+                "MATCH (a:TrialArm {id: $arm_id})"
+                "-[:has_adverse_event]->(ae:TrialAdverseEvent) RETURN ae",
+                arm_id=arm_id,
+            ))
+        arms_data.append(entry)
+
+    as_run_arms = list(client.query_nodes(
+        "MATCH (r:TrialResult {id: $result_id})"
+        "-[:has_as_run_arm]->(a:TrialAsRunArm) RETURN a",
+        result_id=result_id,
+    ))
 
     comparisons_data = []
-    for sc in data["comparisons"]:
-        sc_tuple = (sc.db_ns, sc.db_id)
-        sc_metrics = list(
-            get_metrics_for_statistical_comparison(sc_tuple, client=client)
-        )
-        comparisons_data.append({"comparison": sc, "metrics": sc_metrics})
+    outcomes = []
+    if with_findings:
+        for sc in get_statistical_comparisons_for_trial_result(
+            trial_result_tuple, client=client
+        ):
+            sc_tuple = (sc.db_ns, sc.db_id)
+            sc_metrics = list(
+                get_metrics_for_statistical_comparison(sc_tuple, client=client)
+            )
+            comparisons_data.append({"comparison": sc, "metrics": sc_metrics})
+        outcomes = get_outcomes_for_trial_result(trial_result_tuple, client=client)
 
-    inclusion = [
-        c for c in data["criteria"]
-        if c.data.get("criterion_type") == "inclusion"
-    ]
-    exclusion = [
-        c for c in data["criteria"]
-        if c.data.get("criterion_type") == "exclusion"
-    ]
+    criteria = get_criteria_for_trial_result(trial_result_tuple, client=client)
+    return {
+        "result": result_node,
+        "arms_data": arms_data,
+        "as_run_arms": as_run_arms,
+        "comparisons_data": comparisons_data,
+        "outcomes": outcomes,
+        "genes": get_genes_for_trial_result(trial_result_tuple, client=client),
+        "inclusion": [
+            c for c in criteria if c.data.get("criterion_type") == "inclusion"
+        ],
+        "exclusion": [
+            c for c in criteria if c.data.get("criterion_type") == "exclusion"
+        ],
+    }
+
+
+@trial_results_blueprint.route("/result/<pmid>")
+def result(pmid):
+    """Display the trial result for a given PMID, alongside the registry
+    results of the clinical trials it reports on."""
+    pub_results = get_trial_result_for_pmid(pmid, client=client)
+    if not pub_results:
+        return redirect(url_for("trial_results.search", error=pmid))
 
     ct_rows = client.query_tx(
         """\
@@ -418,14 +455,39 @@ def result(pmid):
             "diseases": list(get_diseases_for_trial(trial_tuple, client=client)),
         })
 
+    sources = [{
+        "kind": "pubmed",
+        "label": "PubMed",
+        "record_id": pmid,
+        "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+        **_load_result_sections(pub_results[0]),
+    }]
+
+    # Registry results of the trials this publication reports on
+    nct_items = {item["nct"]: item for item in result_ncts}
+    ct_result_rows = client.query_tx(
+        "MATCH (ct:ClinicalTrial)-[:has_trial_result]->(r:TrialResult) "
+        "WHERE ct.id IN $ct_ids RETURN ct.id, r",
+        ct_ids=[f"clinicaltrials:{nct}" for nct in nct_items],
+    )
+    for ct_id, ct_result in ct_result_rows:
+        nct = ct_id.split(":")[-1]
+        sources.append({
+            "kind": "ctgov",
+            "label": "ClinicalTrials.gov",
+            "record_id": nct,
+            "url": f"https://clinicaltrials.gov/study/{nct}",
+            "nct_item": nct_items[nct],
+            **_load_result_sections(
+                client.neo4j_to_node(ct_result), with_findings=False
+            ),
+        })
+
     return render_template(
         "trial_results/result.html",
         pmid=pmid,
-        data=data,
-        arms_data=arms_data,
-        comparisons_data=comparisons_data,
-        inclusion=inclusion,
-        exclusion=exclusion,
+        result=sources[0]["result"],
+        sources=sources,
         result_ncts=result_ncts,
         other_ncts=other_ncts,
         trial_entities=trial_entities,

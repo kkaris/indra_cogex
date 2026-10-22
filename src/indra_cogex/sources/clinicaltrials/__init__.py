@@ -1,6 +1,7 @@
 """This module implements input for ClinicalTrials.gov data."""
 
 import logging
+from typing import Tuple
 
 import pandas as pd
 import tqdm
@@ -208,8 +209,15 @@ class ClinicalTrialResultProcessor(Processor):
         "Publication",
     ]
 
-    def __init__(self, look_up_current_max_ids: bool = False):
-        data = load_all(look_up_current_max_ids=look_up_current_max_ids)
+    def __init__(
+        self,
+        look_up_current_max_ids: bool = False,
+        corpora: Tuple[str, ...] = ("pubmed", "ctgov"),
+    ):
+        data = load_all(
+            corpora=tuple(corpora),
+            look_up_current_max_ids=look_up_current_max_ids,
+        )
         self.result_nodes_df = data["result_nodes"]
         self.arms_df = data["arms"]
         self.as_run_arms_df = data["as_run_arms"]

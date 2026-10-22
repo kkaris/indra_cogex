@@ -1,14 +1,17 @@
 """
 Download and parse the ClinicalTrials.gov data using Trialsynth.
 """
+import itertools
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Iterator, List, Optional, Set, Tuple
 
 import pystow
 import pandas as pd
+from tqdm import tqdm
 
 from indra.databases import drugbank_client
 from indra.ontology.bio import bio_ontology
@@ -222,10 +225,9 @@ def process_trialsynth_trial_publication_edges() -> pd.DataFrame:
     :
         A dataframe with CoGEx formatted edges
     """
-    publication_trial_df = pd.read_csv(
+    return pd.read_csv(
         ctconfig.trial_publication_edges_path, sep="\t", compression="gzip"
     )
-    return publication_trial_df
 
 
 def process_trialsynth_bioentity_nodes(mesh_chebi_map: Dict[str, str]) -> pd.DataFrame:
@@ -382,20 +384,9 @@ def process_trialsynth_trial_nodes() -> pd.DataFrame:
     trials_nodes_df["randomized:boolean"] = trials_nodes_df["labels:LABEL[]"].str.contains(
         "Allocation: RANDOMIZED")
 
-    # Set the start_year:int column
-    trials_nodes_df["start_year"] = trials_nodes_df["start_year:integer"].apply(
-        lambda x: int(x) if pd.notna(x) else None
-    ).astype("Int64")
-
-    # Set the completion_year column
-    trials_nodes_df["completion_year"] = trials_nodes_df["completion_year:integer"].apply(
-        lambda x: int(x) if pd.notna(x) else None
-    ).astype("Int64")
-
-    # Set the last_update_submit_year column
-    trials_nodes_df["last_update_submit_year"] = trials_nodes_df["last_update_submit_year:integer"].apply(
-        lambda x: int(x) if pd.notna(x) else None
-    ).astype("Int64")
+    # Copy the year columns as nullable ints
+    for col in ("start_year", "completion_year", "last_update_submit_year"):
+        trials_nodes_df[col] = trials_nodes_df[f"{col}:integer"].astype("Int64")
 
     # fixme: need a better way to get the study type out
     def _get_study_type(labels: str) -> str:
@@ -419,13 +410,53 @@ def process_trialsynth_trial_nodes() -> pd.DataFrame:
     return trials_nodes_df
 
 
+#: Node label -> name of its ID counter. The counters are shared by all
+#: corpora so node IDs stay unique across them.
+ID_COUNTERS = {
+    "TrialResult": "result_id",
+    "TrialArm": "arm_id",
+    "TrialAsRunArm": "as_run_arm_id",
+    "TrialAdverseEvent": "ae_id",
+    "TrialCriterion": "criterion_id",
+    "TrialMetric": "metric_id",
+    "TrialOutcome": "outcome_id",
+    "TrialStatisticalComparison": "stat_id",
+}
+
+#: Keys of the DataFrames returned by load_all
+ROW_KEYS = (
+    "result_nodes",
+    "arms",
+    "as_run_arms",
+    "metrics",
+    "adverse_events",
+    "criteria",
+    "outcomes",
+    "stat_comparisons",
+    "genetic_edges",
+    "ae_bioentity_edges",
+    "criterion_bioentity_edges",
+    "source_edges",
+)
+
+#: Edge DataFrames that are deduplicated on these columns
+DEDUPLICATE_ON = {
+    "genetic_edges": ["result_id", "hgnc_id"],
+    "ae_bioentity_edges": ["adverseevent_id", "db", "id"],
+    "criterion_bioentity_edges": ["criterion_id", "db", "id"],
+}
+
+
 def _load_jsons(
     json_dir: Path,
     id_field: str,
-    index_start: int = 1,
     allowed_ids: Optional[Set[str]] = None,
-) -> List[Tuple[int, str, dict]]:
-    """Load all grounded JSON files, returning (result_id, record_id, data) tuples.
+) -> Iterator[Tuple[str, dict]]:
+    """Yield (record_id, data) tuples from the grounded JSON files.
+
+    Records are yielded one at a time so the caller never holds the whole
+    corpus in memory. Files are read by a thread pool, which hides the
+    per-file I/O latency, a chunk at a time so read-ahead stays bounded.
 
     Parameters
     ----------
@@ -433,34 +464,39 @@ def _load_jsons(
         Path to directory containing grounded JSON files.
     id_field :
         Key holding the record ID (e.g. pmid or nct_id) in each JSON.
-    index_start :
-        The result_id assigned to the first file.
     allowed_ids :
-        If given, records whose ID is not in this set are skipped and do not
-        consume a result_id.
+        If given, records whose ID is not in this set are skipped.
 
-    Returns
-    -------
+    Yields
+    ------
     :
-        List of (result_id, record_id, data) tuples, one per JSON file.
+        A (record_id, data) tuple per JSON file.
     """
-    records = []
+    paths = sorted(json_dir.glob("*.json"))
+    n_loaded = 0
     n_skipped = 0
-    for path in sorted(json_dir.glob("*.json")):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except Exception as e:
-            logger.warning("Failed to load %s: %s", path.name, e)
-            continue
-        record_id = str(data.get(id_field, path.stem))
-        if allowed_ids is not None and record_id not in allowed_ids:
-            n_skipped += 1
-            continue
-        records.append((index_start + len(records), record_id, data))
-    logger.info("Loaded %d JSON files from %s", len(records), json_dir)
+    chunk_size = 1000
+    with ThreadPoolExecutor(max_workers=8) as executor, tqdm(
+        total=len(paths), unit="file", desc=f"Loading {json_dir.name}"
+    ) as progress:
+        for start in range(0, len(paths), chunk_size):
+            chunk = paths[start:start + chunk_size]
+            progress.update(len(chunk))
+            for path, raw in zip(chunk, executor.map(Path.read_bytes, chunk)):
+                try:
+                    data = json.loads(raw)
+                except Exception as e:
+                    logger.warning("Failed to load %s: %s", path.name, e)
+                    continue
+                record_id = str(data.get(id_field, path.stem))
+                if allowed_ids is not None and record_id not in allowed_ids:
+                    n_skipped += 1
+                    continue
+                n_loaded += 1
+                yield record_id, data
+    logger.info("Loaded %d JSON files from %s", n_loaded, json_dir)
     if n_skipped:
         logger.info("Skipped %d records with an ID not in allowed_ids", n_skipped)
-    return records
 
 
 def _get_trial_nct_ids() -> Set[str]:
@@ -469,6 +505,182 @@ def _get_trial_nct_ids() -> Set[str]:
         ctconfig.trials_path, sep="\t", compression="gzip", usecols=["curie:CURIE"]
     )["curie:CURIE"]
     return {curie.split(":", 1)[1] for curie in curies.dropna()}
+
+
+def _get_id_starts(look_up_current_max_ids: bool) -> Dict[str, int]:
+    """Return the first ID to assign for each ID counter."""
+    if not look_up_current_max_ids:
+        return {name: 1 for name in ID_COUNTERS.values()}
+
+    from indra_cogex.client import Neo4jClient
+    client = Neo4jClient()
+    starts = {}
+    for label, name in ID_COUNTERS.items():
+        rows = client.query_tx(
+            f"MATCH (n:{label}) "
+            "RETURN max(toInteger(split(n.id, ':')[-1])) AS max_id"
+        )
+        starts[name] = (int(rows[0][0] or 0) if rows else 0) + 1
+    return starts
+
+
+def _metric_row(metric: dict, parent_ns: str, parent_id: int, metric_id: int) -> dict:
+    return {
+        "parent_ns": parent_ns,
+        "parent_id": parent_id,
+        "metric_id": metric_id,
+        "name": _clean(metric.get("name", "")),
+        "value_numeric": metric.get("value_numeric"),
+        "unit": _clean(metric.get("unit", "")),
+        "value_text": _clean(metric.get("value_text", "")),
+        "source_sentence": _clean(metric.get("source_sentence", "")),
+    }
+
+
+def _add_grounding_edge(edges: List[dict], id_key: str, node_id: int, item: dict):
+    """Append an edge to the item's grounding, if it has one."""
+    grounding = item.get("grounding") or {}
+    if grounding.get("db") and grounding.get("id"):
+        edges.append({id_key: node_id, "db": grounding["db"], "id": grounding["id"]})
+
+
+def _extract_arms(data: dict, result_id: int, ids: dict, rows: dict):
+    for arm in data.get("arms", []):
+        arm_id = next(ids["arm_id"])
+        rows["arms"].append({
+            "result_id": result_id,
+            "arm_id": arm_id,
+            "arm_name": _clean(arm.get("arm_name", "")),
+            "arm_type": _clean(arm.get("arm_type") or ""),
+            "n": arm.get("n"),
+            "dosage": _clean(arm.get("dosage") or ""),
+            "source_sentence": _clean(arm.get("source_sentence", "")),
+        })
+        for metric in arm.get("metrics", []):
+            rows["metrics"].append(
+                _metric_row(metric, "arm", arm_id, next(ids["metric_id"]))
+            )
+        for ae in arm.get("adverse_events", []):
+            ae_id = next(ids["ae_id"])
+            rows["adverse_events"].append({
+                "arm_id": arm_id,
+                "adverseevent_id": ae_id,
+                "event_name": _clean(ae.get("event_name", "")),
+                "incidence_numeric": ae.get("incidence_numeric"),
+                "unit": _clean(ae.get("unit", "")),
+                "value_text": _clean(ae.get("value_text", "")),
+                "source_sentence": _clean(ae.get("source_sentence", "")),
+            })
+            _add_grounding_edge(
+                rows["ae_bioentity_edges"], "adverseevent_id", ae_id, ae
+            )
+
+
+def _extract_as_run_arms(data: dict, result_id: int, ids: dict, rows: dict):
+    for arm in data.get("as_run_arms", []):
+        rows["as_run_arms"].append({
+            "result_id": result_id,
+            "as_run_arm_id": next(ids["as_run_arm_id"]),
+            "group_label": _clean(arm.get("group_label") or ""),
+            "intervention": _clean(arm.get("drug") or ""),
+            "dosage": _clean(arm.get("dose") or ""),
+            "route": _clean(arm.get("route") or ""),
+            "schedule": _clean(arm.get("schedule") or ""),
+            "evidence_text": _clean(arm.get("evidence_text") or ""),
+        })
+
+
+def _extract_criteria(data: dict, result_id: int, ids: dict, rows: dict):
+    for criterion_type in ("inclusion", "exclusion"):
+        # Prefer the grounded lists, which carry the same text plus a
+        # grounding, and fall back to the plain ones
+        items = data.get(f"grounded_{criterion_type}_criteria") or data.get(
+            f"{criterion_type}_criteria", []
+        )
+        for item in items:
+            criterion_id = next(ids["criterion_id"])
+            rows["criteria"].append({
+                "result_id": result_id,
+                "criterion_id": criterion_id,
+                "text": _clean(item.get("text", "")),
+                "criterion_type": criterion_type,
+                "evidence_text": _clean(item.get("evidence_text", "")),
+            })
+            _add_grounding_edge(
+                rows["criterion_bioentity_edges"], "criterion_id", criterion_id, item
+            )
+
+
+def _extract_outcomes(data: dict, result_id: int, ids: dict, rows: dict):
+    for item in data.get("results", []):
+        rows["outcomes"].append({
+            "result_id": result_id,
+            "outcome_id": next(ids["outcome_id"]),
+            "text": _clean(item.get("text", "")),
+            "evidence_text": _clean(item.get("evidence_text", "")),
+        })
+
+
+def _extract_stat_comparisons(data: dict, result_id: int, ids: dict, rows: dict):
+    for comp in data.get("statistical_comparisons", []):
+        stat_id = next(ids["stat_id"])
+        rows["stat_comparisons"].append({
+            "result_id": result_id,
+            "statcomparison_id": stat_id,
+            "comparison_name": _clean(comp.get("comparison_name", "")),
+        })
+        for metric in comp.get("metrics", []):
+            rows["metrics"].append(
+                _metric_row(metric, "statcomparison", stat_id, next(ids["metric_id"]))
+            )
+
+
+def _extract_genetic_edges(data: dict, result_id: int, rows: dict):
+    for entry in data.get("genetic", {}).get("grounded_inclusion", []):
+        for grounding in entry.get("groundings", []):
+            info = grounding.get("info", {})
+            if info.get("db") == "HGNC" and info.get("id"):
+                rows["genetic_edges"].append({
+                    "result_id": result_id,
+                    "hgnc_id": info["id"],
+                    "symbol": info.get("entry_name", grounding.get("symbol", "")),
+                    "variant": entry.get("variant"),
+                    "evidence_text": _clean(entry.get("evidence_text", "")),
+                })
+
+
+def _extract_record(
+    data: dict, record_id: str, source_ns: str, ids: dict, rows: dict
+):
+    """Append the rows for one grounded JSON record."""
+    result_id = next(ids["result_id"])
+    randomization = data.get("randomization") or {}
+    recruitment = data.get("recruitment") or {}
+    rows["result_nodes"].append({
+        "result_id": result_id,
+        "study_info": _clean(data.get("study_info", "")),
+        "trial_ids:string[]": ";".join(data.get("trial_ids", [])),
+        "phase": data.get("phase") or "",
+        "locations:string[]": ";".join(data.get("locations", [])),
+        "randomization_ratio": _clean(randomization.get("ratio") or ""),
+        "randomization_stratification_factors:string[]": ";".join(
+            _clean(f).replace(";", ",")
+            for f in randomization.get("stratification_factors") or []
+        ),
+        "recruitment_channel": _clean(recruitment.get("channel") or ""),
+        "recruitment_window": _clean(recruitment.get("window") or ""),
+    })
+    rows["source_edges"].append({
+        "source_ns": source_ns,
+        "source_id": record_id,
+        "result_id": result_id,
+    })
+    _extract_arms(data, result_id, ids, rows)
+    _extract_criteria(data, result_id, ids, rows)
+    _extract_as_run_arms(data, result_id, ids, rows)
+    _extract_outcomes(data, result_id, ids, rows)
+    _extract_stat_comparisons(data, result_id, ids, rows)
+    _extract_genetic_edges(data, result_id, rows)
 
 
 def load_all(
@@ -492,259 +704,26 @@ def load_all(
     Returns
     -------
     :
-        Dictionary with keys: result_nodes, arms, as_run_arms, metrics,
-        adverse_events, criteria, outcomes, stat_comparisons, genetic_edges,
-        ae_bioentity_edges, criterion_bioentity_edges, source_edges.
+        Dictionary of DataFrames keyed by the names in ROW_KEYS.
     """
-    result_nodes = []
-    arms = []
-    as_run_arms = []
-    metrics = []
-    adverse_events = []
-    criteria = []
-    outcomes = []
-    stat_comparisons = []
-    genetic_edges = []
-    ae_bioentity_edges = []
-    criterion_bioentity_edges = []
-    source_edges = []
-
-    if look_up_current_max_ids:
-        from indra_cogex.client import Neo4jClient
-        node_match_query_template = """\
-        MATCH (n:{node_label})
-        RETURN max(toInteger(split(n.id, ':')[-1])) AS max_id"""
-        labels = [
-            ("TrialArm", "arm_id"),
-            ("TrialAsRunArm", "as_run_arm_id"),
-            ("TrialAdverseEvent", "ae_id"),
-            ("TrialCriterion", "criterion_id"),
-            ("TrialMetric", "metric_id"),
-            ("TrialOutcome", "outcome_id"),
-            ("TrialResult", "result_id"),
-            ("TrialStatisticalComparison", "stat_id"),
-        ]
-        # Look up the current max IDs for each node type in the database
-        client = Neo4jClient()
-        index_map = {}
-        for label, id_name in labels:
-            query = node_match_query_template.format(node_label=label)
-            rows = client.query_tx(query)
-            max_id = int(rows[0][0] or 0) if rows else 0
-            index_map[id_name] = max_id + 1
-    else:
-        index_map = {
-            "arm_id": 1,
-            "as_run_arm_id": 1,
-            "ae_id": 1,
-            "criterion_id": 1,
-            "metric_id": 1,
-            "outcome_id": 1,
-            "result_id": 1,
-            "stat_id": 1,
-        }
+    ids = {
+        name: itertools.count(start)
+        for name, start in _get_id_starts(look_up_current_max_ids).items()
+    }
+    rows = {key: [] for key in ROW_KEYS}
 
     for corpus in corpora:
         json_dir, id_field, source_ns = RESULT_CORPORA[corpus]
         # Registry results attach directly to a ClinicalTrial node, so only
         # keep those whose trial exists in the trialsynth trial nodes
         allowed_ids = _get_trial_nct_ids() if source_ns == "CLINICALTRIALS" else None
-        records = _load_jsons(
-            json_dir,
-            id_field,
-            index_start=index_map["result_id"],
-            allowed_ids=allowed_ids,
-        )
-        if records:
-            index_map["result_id"] = records[-1][0] + 1
-        for result_id, record_id, data in records:
-            randomization = data.get("randomization") or {}
-            recruitment = data.get("recruitment") or {}
-            result_nodes.append({
-                "result_id": result_id,
-                "study_info": _clean(data.get("study_info", "")),
-                "trial_ids:string[]": ";".join(data.get("trial_ids", [])),
-                "phase": data.get("phase") or "",
-                "locations:string[]": ";".join(data.get("locations", [])),
-                "randomization_ratio": _clean(randomization.get("ratio") or ""),
-                "randomization_stratification_factors:string[]": ";".join(
-                    _clean(f).replace(";", ",")
-                    for f in randomization.get("stratification_factors") or []
-                ),
-                "recruitment_channel": _clean(recruitment.get("channel") or ""),
-                "recruitment_window": _clean(recruitment.get("window") or ""),
-            })
-            source_edges.append({
-                "source_ns": source_ns,
-                "source_id": record_id,
-                "result_id": result_id,
-            })
+        for record_id, data in _load_jsons(json_dir, id_field, allowed_ids):
+            _extract_record(data, record_id, source_ns, ids, rows)
 
-            for arm in data.get("arms", []):
-                arms.append({
-                    "result_id": result_id,
-                    "arm_id": index_map["arm_id"],
-                    "arm_name": _clean(arm.get("arm_name", "")),
-                    "arm_type": _clean(arm.get("arm_type") or ""),
-                    "n": arm.get("n"),
-                    "dosage": _clean(arm.get("dosage") or ""),
-                    "source_sentence": _clean(arm.get("source_sentence", "")),
-                })
-                for m in arm.get("metrics", []):
-                    metrics.append({
-                        "parent_ns": "arm",
-                        "parent_id": index_map["arm_id"],
-                        "metric_id": index_map["metric_id"],
-                        "name": _clean(m.get("name", "")),
-                        "value_numeric": m.get("value_numeric"),
-                        "unit": _clean(m.get("unit", "")),
-                        "value_text": _clean(m.get("value_text", "")),
-                        "source_sentence": _clean(m.get("source_sentence", "")),
-                    })
-                    index_map["metric_id"] += 1
-                for ae in arm.get("adverse_events", []):
-                    adverse_events.append({
-                        "arm_id": index_map["arm_id"],
-                        "adverseevent_id": index_map["ae_id"],
-                        "event_name": _clean(ae.get("event_name", "")),
-                        "incidence_numeric": ae.get("incidence_numeric"),
-                        "unit": _clean(ae.get("unit", "")),
-                        "value_text": _clean(ae.get("value_text", "")),
-                        "source_sentence": _clean(ae.get("source_sentence", "")),
-                    })
-                    grounding = ae.get("grounding") or {}
-                    if grounding.get("db") and grounding.get("id"):
-                        ae_bioentity_edges.append({
-                            "adverseevent_id": index_map["ae_id"],
-                            "db": grounding["db"],
-                            "id": grounding["id"],
-                        })
-                    index_map["ae_id"] += 1
-                index_map["arm_id"] += 1
-
-            for criterion_type in ("inclusion", "exclusion"):
-                # Prefer the grounded lists, which carry the same text plus a
-                # grounding, and fall back to the plain ones
-                items = data.get(f"grounded_{criterion_type}_criteria") or data.get(
-                    f"{criterion_type}_criteria", []
-                )
-                for item in items:
-                    criteria.append({
-                        "result_id": result_id,
-                        "criterion_id": index_map["criterion_id"],
-                        "text": _clean(item.get("text", "")),
-                        "criterion_type": criterion_type,
-                        "evidence_text": _clean(item.get("evidence_text", "")),
-                    })
-                    grounding = item.get("grounding") or {}
-                    if grounding.get("db") and grounding.get("id"):
-                        criterion_bioentity_edges.append({
-                            "criterion_id": index_map["criterion_id"],
-                            "db": grounding["db"],
-                            "id": grounding["id"],
-                        })
-                    index_map["criterion_id"] += 1
-
-            for arm in data.get("as_run_arms", []):
-                as_run_arms.append({
-                    "result_id": result_id,
-                    "as_run_arm_id": index_map["as_run_arm_id"],
-                    "group_label": _clean(arm.get("group_label") or ""),
-                    "intervention": _clean(arm.get("drug") or ""),
-                    "dosage": _clean(arm.get("dose") or ""),
-                    "route": _clean(arm.get("route") or ""),
-                    "schedule": _clean(arm.get("schedule") or ""),
-                    "evidence_text": _clean(arm.get("evidence_text") or ""),
-                })
-                index_map["as_run_arm_id"] += 1
-
-            for item in data.get("results", []):
-                outcomes.append({
-                    "result_id": result_id,
-                    "outcome_id": index_map["outcome_id"],
-                    "text": _clean(item.get("text", "")),
-                    "evidence_text": _clean(item.get("evidence_text", "")),
-                })
-                index_map["outcome_id"] += 1
-
-            for comp in data.get("statistical_comparisons", []):
-                stat_comparisons.append({
-                    "result_id": result_id,
-                    "statcomparison_id": index_map["stat_id"],
-                    "comparison_name": _clean(comp.get("comparison_name", "")),
-                })
-                for m in comp.get("metrics", []):
-                    metrics.append({
-                        "parent_ns": "statcomparison",
-                        "parent_id": index_map["stat_id"],
-                        "metric_id": index_map["metric_id"],
-                        "name": _clean(m.get("name", "")),
-                        "value_numeric": m.get("value_numeric"),
-                        "unit": _clean(m.get("unit", "")),
-                        "value_text": _clean(m.get("value_text", "")),
-                        "source_sentence": _clean(m.get("source_sentence", "")),
-                    })
-                    index_map["metric_id"] += 1
-                index_map["stat_id"] += 1
-
-            grounded = data.get("genetic", {}).get("grounded_inclusion", [])
-            for entry in grounded:
-                for grounding in entry.get("groundings", []):
-                    info = grounding.get("info", {})
-                    if info.get("db") == "HGNC" and info.get("id"):
-                        genetic_edges.append({
-                            "result_id": result_id,
-                            "hgnc_id": info["id"],
-                            "symbol": info.get("entry_name", grounding.get("symbol", "")),
-                            "variant": entry.get("variant"),
-                            "evidence_text": _clean(entry.get("evidence_text", "")),
-                        })
-
-    logger.info("Extracted %d TrialArm nodes", len(arms))
-    logger.info("Extracted %d TrialAsRunArm nodes", len(as_run_arms))
-    logger.info("Extracted %d TrialMetric nodes", len(metrics))
-    logger.info("Extracted %d TrialAdverseEvent nodes", len(adverse_events))
-    logger.info("Extracted %d TrialCriterion nodes", len(criteria))
-    logger.info("Extracted %d TrialOutcome nodes", len(outcomes))
-    logger.info("Extracted %d TrialStatisticalComparison nodes", len(stat_comparisons))
-    logger.info("Extracted %d has_genetic_criterion edges", len(genetic_edges))
-    logger.info("Extracted %d adverse_event_grounded_as edges", len(ae_bioentity_edges))
-    logger.info("Extracted %d criterion_grounded_as edges", len(criterion_bioentity_edges))
-
-    genetic_edges_df = pd.DataFrame(genetic_edges)
-    if not genetic_edges_df.empty:
-        genetic_edges_df = genetic_edges_df.drop_duplicates(subset=["result_id", "hgnc_id"])
-        logger.info(
-            "%d unique has_genetic_criterion edges after deduplication",
-            len(genetic_edges_df),
-        )
-    ae_bioentity_edges_df = pd.DataFrame(ae_bioentity_edges)
-    if not ae_bioentity_edges_df.empty:
-        ae_bioentity_edges_df = ae_bioentity_edges_df.drop_duplicates(
-            subset=["adverseevent_id", "db", "id"]
-        )
-        logger.info(
-            "%d unique adverse_event_grounded_as edges after deduplication",
-            len(ae_bioentity_edges_df),
-        )
-
-    criterion_bioentity_edges_df = pd.DataFrame(criterion_bioentity_edges)
-    if not criterion_bioentity_edges_df.empty:
-        criterion_bioentity_edges_df = criterion_bioentity_edges_df.drop_duplicates(
-            subset=["criterion_id", "db", "id"]
-        )
-
-    return {
-        "result_nodes": pd.DataFrame(result_nodes),
-        "arms": pd.DataFrame(arms),
-        "as_run_arms": pd.DataFrame(as_run_arms),
-        "metrics": pd.DataFrame(metrics),
-        "adverse_events": pd.DataFrame(adverse_events),
-        "criteria": pd.DataFrame(criteria),
-        "outcomes": pd.DataFrame(outcomes),
-        "stat_comparisons": pd.DataFrame(stat_comparisons),
-        "genetic_edges": genetic_edges_df,
-        "ae_bioentity_edges": ae_bioentity_edges_df,
-        "criterion_bioentity_edges": criterion_bioentity_edges_df,
-        "source_edges": pd.DataFrame(source_edges),
-    }
+    frames = {key: pd.DataFrame(key_rows) for key, key_rows in rows.items()}
+    for key, subset in DEDUPLICATE_ON.items():
+        if not frames[key].empty:
+            frames[key] = frames[key].drop_duplicates(subset=subset)
+    for key, df in frames.items():
+        logger.info("Extracted %d %s rows", len(df), key)
+    return frames

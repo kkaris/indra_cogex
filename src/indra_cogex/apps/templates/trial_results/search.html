@@ -103,7 +103,7 @@
         <h1>Clinical Trial Results Browser</h1>
         <p>Search extracted clinical trial result data by PubMed ID, gene, drug, or disease.</p>
         <p style="margin: 1.8rem auto 0 auto; font-size: 0.75rem; color: #aaa;">
-            {{ "{:,}".format(processed) }} trial papers processed
+            {{ "{:,}".format(processed.publications) }} results from PubMed publications · {{ "{:,}".format(processed.registry) }} from ClinicalTrials.gov records
         </p>
     </div>
 
